@@ -128,8 +128,8 @@ helm upgrade --install ilosia charts/ilosia \
   --timeout 5m
 ```
 
-Le hook Helm exécute les migrations après la première installation et avant
-chaque upgrade. Le Secret reste extérieur à Helm et le PVC PostgreSQL porte une
+Le hook Helm exécute les migrations après chaque installation ou upgrade. Le
+Secret reste extérieur à Helm et le PVC PostgreSQL porte une
 politique `keep` afin qu'une désinstallation ne supprime pas les données.
 
 Le Pod Django embarque Helm et utilise le ServiceAccount
