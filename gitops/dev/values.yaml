@@ -1,6 +1,6 @@
 image:
   repository: ghcr.io/quaxsze/ilosia
-  tag: "replace-with-a-commit-sha"
+  tag: "e9a4649b07a8728645880c0b31adec307bdf19a4"
   pullPolicy: IfNotPresent
 
 authentication:
