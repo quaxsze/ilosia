@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+  labels:
+    {{- include "ilosia.commonLabels" . | nindent 4 }}
+data:
+  DJANGO_DEBUG: "false"
+  DJANGO_ALLOWED_HOSTS: {{ printf "%s,localhost,127.0.0.1" .Values.ingress.host | quote }}
+  DJANGO_PUBLIC_HOST: {{ .Values.ingress.publicHost | quote }}
+  POSTGRES_DB: {{ .Values.database.name | quote }}
+  POSTGRES_USER: {{ .Values.database.user | quote }}
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  WORKLOAD_BASE_DOMAIN: {{ .Values.workloads.baseDomain | quote }}
+  WORKLOAD_INGRESS_SCHEME: {{ .Values.workloads.ingressScheme | quote }}
+  WORKLOAD_INGRESS_PORT: {{ .Values.workloads.ingressPort | quote }}
+  MAX_SERVICES_PER_USER: {{ .Values.workloads.maxServicesPerUser | quote }}
+  USER_QUOTA_CPU: {{ .Values.workloads.quota.cpu | quote }}
+  USER_QUOTA_MEMORY: {{ .Values.workloads.quota.memory | quote }}
+  USER_QUOTA_STORAGE: {{ .Values.workloads.quota.storage | quote }}
+  USER_QUOTA_PODS: {{ .Values.workloads.quota.pods | quote }}
+  S3_ENDPOINT_URL: {{ .Values.storage.endpointUrl | quote }}
+  S3_PUBLIC_ENDPOINT_URL: {{ .Values.storage.publicEndpointUrl | quote }}
+  S3_BROWSER_ENDPOINT_URL: {{ .Values.storage.browserEndpointUrl | quote }}
+  S3_REGION: {{ .Values.storage.region | quote }}
+  OIDC_ENABLED: {{ .Values.authentication.oidc.enabled | quote }}
+  OIDC_REALM: {{ .Values.authentication.oidc.realm | quote }}
+  OIDC_RP_CLIENT_ID: {{ .Values.authentication.oidc.clientId | quote }}
+  OIDC_PUBLIC_BASE_URL: {{ .Values.authentication.oidc.publicBaseUrl | quote }}
+  OIDC_INTERNAL_BASE_URL: {{ .Values.authentication.oidc.internalBaseUrl | quote }}
+  OIDC_POST_LOGOUT_REDIRECT_URI: {{ .Values.authentication.oidc.postLogoutRedirectUri | quote }}

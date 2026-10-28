@@ -1,0 +1,6 @@
+apiVersion: v2
+name: jupyter
+description: Single-user JupyterLab workload for Ilosia
+type: application
+version: 0.1.0
+appVersion: "2026-07-28"

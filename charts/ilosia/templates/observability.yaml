@@ -1,0 +1,97 @@
+{{- if .Values.observability.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "ilosia.commonLabels" . | nindent 4 }}
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ilosia
+      app.kubernetes.io/component: web
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.observability.scrapeInterval }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-grafana-dashboard
+  labels:
+    grafana_dashboard: "1"
+    {{- include "ilosia.commonLabels" . | nindent 4 }}
+data:
+  ilosia.json: |-
+    {
+      "annotations": {"list": []},
+      "editable": true,
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "Django request rate",
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0},
+          "targets": [{"expr": "sum(rate(django_http_requests_before_middlewares_total[5m]))", "legendFormat": "requests/s"}]
+        },
+        {
+          "type": "timeseries",
+          "title": "Django error rate",
+          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0},
+          "targets": [{"expr": "sum(rate(django_http_responses_total_by_status_total{status=~\"5..\"}[5m]))", "legendFormat": "5xx/s"}]
+        },
+        {
+          "type": "timeseries",
+          "title": "Django p95 latency",
+          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0},
+          "targets": [{"expr": "histogram_quantile(0.95, sum(rate(django_http_requests_latency_including_middlewares_seconds_bucket[5m])) by (le))", "legendFormat": "p95"}]
+        },
+        {
+          "type": "stat",
+          "title": "Services launched",
+          "gridPos": {"h": 6, "w": 6, "x": 0, "y": 8},
+          "targets": [{"expr": "sum(ilosia_service_launch_total)", "legendFormat": "launches"}]
+        },
+        {
+          "type": "stat",
+          "title": "Services failed",
+          "gridPos": {"h": 6, "w": 6, "x": 6, "y": 8},
+          "targets": [{"expr": "sum(ilosia_service_launch_failed_total)", "legendFormat": "failures"}]
+        },
+        {
+          "type": "stat",
+          "title": "Pods running",
+          "gridPos": {"h": 6, "w": 6, "x": 12, "y": 8},
+          "targets": [{"expr": "sum(kube_pod_status_phase{phase=\"Running\"})", "legendFormat": "pods"}]
+        },
+        {
+          "type": "stat",
+          "title": "Pod restarts",
+          "gridPos": {"h": 6, "w": 6, "x": 18, "y": 8},
+          "targets": [{"expr": "sum(kube_pod_container_status_restarts_total)", "legendFormat": "restarts"}]
+        },
+        {
+          "type": "timeseries",
+          "title": "CPU usage by namespace",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14},
+          "targets": [{"expr": "sum by (namespace) (rate(container_cpu_usage_seconds_total{container!=\"\"}[5m]))", "legendFormat": "{{ `{{namespace}}` }}"}]
+        },
+        {
+          "type": "timeseries",
+          "title": "Memory usage by namespace",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14},
+          "targets": [{"expr": "sum by (namespace) (container_memory_working_set_bytes{container!=\"\"})", "legendFormat": "{{ `{{namespace}}` }}"}]
+        }
+      ],
+      "refresh": "10s",
+      "schemaVersion": 39,
+      "tags": ["ilosia"],
+      "templating": {"list": []},
+      "time": {"from": "now-1h", "to": "now"},
+      "title": "Ilosia",
+      "uid": "ilosia"
+    }
+{{- end }}

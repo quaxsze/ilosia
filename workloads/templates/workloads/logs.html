@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Logs · {{ service.display_name }} · Ilosia{% endblock %}
+
+{% block content %}
+  <a class="link-secondary text-decoration-none" href="{% url 'workloads:detail' service.id %}">← {{ service.display_name }}</a>
+  <div class="d-flex justify-content-between align-items-center mt-3 mb-4">
+    <div>
+      <h1 class="h2 mb-1">Logs</h1>
+      <p class="text-body-secondary mb-0">Last 200 lines from {{ service.display_name }}.</p>
+    </div>
+    <button
+      class="btn btn-outline-secondary"
+      hx-get="{% url 'workloads:logs' service.id %}"
+      hx-target="#service-logs"
+      hx-swap="outerHTML"
+    >Refresh</button>
+  </div>
+
+  <div
+    id="service-logs"
+    hx-get="{% url 'workloads:logs' service.id %}"
+    hx-trigger="load, every 5s"
+    hx-swap="outerHTML"
+  >Loading logs…</div>
+{% endblock %}

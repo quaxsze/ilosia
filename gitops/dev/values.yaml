@@ -1,0 +1,12 @@
+image:
+  repository: ghcr.io/quaxsze/ilosia
+  tag: "replace-with-a-commit-sha"
+  pullPolicy: IfNotPresent
+
+authentication:
+  oidc:
+    enabled: true
+
+keycloak:
+  enabled: true
+

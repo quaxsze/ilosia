@@ -1,0 +1,136 @@
+replicaCount: 1
+
+image:
+  repository: ilosia
+  tag: dev
+  pullPolicy: Never
+
+existingSecret: ilosia-secrets
+
+authentication:
+  oidc:
+    enabled: false
+    realm: ilosia
+    clientId: ilosia
+    publicBaseUrl: http://keycloak.localhost:8080
+    internalBaseUrl: http://keycloak:8080
+    redirectUri: http://ilosia.localhost:8080/oidc/callback/
+    webOrigin: http://ilosia.localhost:8080
+    postLogoutRedirectUri: http://ilosia.localhost:8080/login/
+
+ingress:
+  enabled: true
+  className: nginx
+  host: ilosia.localhost
+  publicHost: ilosia.localhost:8080
+
+workloads:
+  baseDomain: localhost
+  ingressScheme: http
+  ingressPort: 8080
+  maxServicesPerUser: 5
+  quota:
+    cpu: "20"
+    memory: 40Gi
+    storage: 100Gi
+    pods: "10"
+
+storage:
+  endpointUrl: http://garage:3900
+  publicEndpointUrl: http://garage.localhost
+  browserEndpointUrl: http://garage.localhost:8080
+  region: garage
+  garage:
+    enabled: true
+    image:
+      repository: dxflrs/garage
+      tag: v2.5.0
+      pullPolicy: IfNotPresent
+    ingress:
+      enabled: true
+      className: nginx
+      host: garage.localhost
+    persistence:
+      claimName: garage-data
+      size: 5Gi
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+
+# shortcut: PostgreSQL is single-replica for local learning; use a managed database before production.
+database:
+  image:
+    repository: postgres
+    tag: 17-alpine
+    pullPolicy: IfNotPresent
+  name: ilosia
+  user: ilosia
+  persistence:
+    claimName: postgres-data
+    size: 1Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+migrations:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+observability:
+  enabled: true
+  scrapeInterval: 15s
+
+# shortcut: one Keycloak replica is enough for local k3d; production needs HA and backups.
+keycloak:
+  enabled: false
+  image:
+    repository: quay.io/keycloak/keycloak
+    tag: 26.8.1
+    pullPolicy: IfNotPresent
+  hostname: http://keycloak.localhost:8080
+  ingress:
+    className: nginx
+    host: keycloak.localhost
+  database:
+    image:
+      repository: postgres
+      tag: 17-alpine
+      pullPolicy: IfNotPresent
+    persistence:
+      claimName: keycloak-postgres-data
+      size: 1Gi
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi

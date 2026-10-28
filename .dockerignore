@@ -1,0 +1,12 @@
+.git
+.github
+.venv
+**/.terraform
+__pycache__
+*.py[cod]
+.env
+.ruff_cache
+staticfiles
+k8s/bootstrap/secret.yaml
+observability/secret.yaml
+

@@ -1,0 +1,20 @@
+<div
+  class="d-flex align-items-center gap-2"
+  {% if service.status != "DELETED" %}
+    hx-get="{% url 'workloads:status' service.id %}"
+    hx-trigger="every 5s"
+    hx-swap="outerHTML"
+  {% endif %}
+>
+  {% if open_url %}
+    <a class="btn btn-primary" href="{{ open_url }}" target="_blank" rel="noopener noreferrer">Open</a>
+  {% endif %}
+  {% if service.status != "DELETED" %}
+    <a class="btn btn-outline-secondary" href="{% url 'workloads:logs' service.id %}">Logs</a>
+    <form method="post" action="{% url 'workloads:delete' service.id %}" onsubmit="return confirm('Delete this service? Its persistent data will be kept.');">
+      {% csrf_token %}
+      <button class="btn btn-outline-danger" type="submit" {% if service.status == "DELETING" %}disabled{% endif %}>Delete</button>
+    </form>
+  {% endif %}
+  <span class="badge text-bg-secondary fs-6">{{ service.get_status_display }}</span>
+</div>

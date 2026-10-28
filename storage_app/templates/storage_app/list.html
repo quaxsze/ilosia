@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}My Storage · Ilosia{% endblock %}
+
+{% block content %}
+  <h1 class="h2">My Storage</h1>
+  <p class="text-body-secondary">Objects in your private S3 bucket.</p>
+
+  <div class="list-group shadow-sm">
+    {% for object in objects %}
+      <div class="list-group-item d-flex justify-content-between align-items-center gap-3">
+        <div class="text-break">
+          <strong>{{ object.Key }}</strong>
+          <div class="small text-body-secondary">{{ object.Size }} bytes · {{ object.LastModified }}</div>
+        </div>
+        <div class="d-flex gap-2">
+          <a class="btn btn-sm btn-outline-primary" href="{% url 'storage:download' %}?key={{ object.Key|urlencode }}">Download</a>
+          <form method="post" action="{% url 'storage:delete' %}" onsubmit="return confirm('Delete this object?');">
+            {% csrf_token %}
+            <input type="hidden" name="key" value="{{ object.Key }}">
+            <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+          </form>
+        </div>
+      </div>
+    {% empty %}
+      <div class="list-group-item p-4 text-center text-body-secondary">No objects found.</div>
+    {% endfor %}
+  </div>
+{% endblock %}

@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - gitops/**
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: ilosia
+          POSTGRES_USER: ilosia
+          POSTGRES_PASSWORD: ilosia
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ilosia -d ilosia"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DJANGO_SECRET_KEY: ci-only-secret
+      POSTGRES_DB: ilosia
+      POSTGRES_USER: ilosia
+      POSTGRES_PASSWORD: ilosia
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: 5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run python manage.py test
+      - uses: azure/setup-helm@v4
+      - run: helm lint charts/ilosia
+      - run: helm lint charts/jupyter --set ingress.host=jupyter-test.localhost
+      - run: docker build --tag ilosia:ci .
+

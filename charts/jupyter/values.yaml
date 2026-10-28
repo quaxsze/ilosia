@@ -1,0 +1,23 @@
+image:
+  repository: quay.io/jupyter/minimal-notebook
+  tag: "2026-07-28"
+  pullPolicy: IfNotPresent
+
+environment: {}
+secretEnvironment: []
+
+resources:
+  requests:
+    cpu: "1"
+    memory: 2Gi
+  limits:
+    cpu: "1"
+    memory: 2Gi
+
+storage:
+  size: 10Gi
+
+ingress:
+  className: nginx
+  controllerNamespace: nginx-ingress
+  host: ""

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-web
+  labels:
+    {{- include "ilosia.commonLabels" . | nindent 4 }}
+    app.kubernetes.io/name: ilosia
+    app.kubernetes.io/component: web
+spec:
+  selector:
+    app.kubernetes.io/name: ilosia
+    app.kubernetes.io/component: web
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

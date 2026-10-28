@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Catalog · Ilosia{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h1 class="h2">Catalog</h1>
+      <p class="text-body-secondary mb-0">Choose an application to launch.</p>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    {% for service in services %}
+      <div class="col-md-6 col-lg-4">
+        <article class="card h-100 shadow-sm">
+          <div class="card-body d-flex flex-column">
+            <h2 class="h4">{{ service.name }}</h2>
+            <p class="text-body-secondary flex-grow-1">{{ service.description }}</p>
+            <dl class="row small mb-4">
+              <dt class="col-6">Default CPU</dt>
+              <dd class="col-6">{{ service.default_cpu_units }}</dd>
+              <dt class="col-6">Default memory</dt>
+              <dd class="col-6">{{ service.default_memory_mib }} MiB</dd>
+              <dt class="col-6">Default storage</dt>
+              <dd class="col-6">{{ service.default_storage_mib }} MiB</dd>
+            </dl>
+            <a class="btn btn-primary" href="{% url 'workloads:launch' service.slug %}">
+              Launch
+            </a>
+          </div>
+        </article>
+      </div>
+    {% empty %}
+      <p>No service is currently available.</p>
+    {% endfor %}
+  </div>
+{% endblock %}
+

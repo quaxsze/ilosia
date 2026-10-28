@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}{{ service.display_name }} · Ilosia{% endblock %}
+
+{% block content %}
+  <a class="link-secondary text-decoration-none" href="{% url 'workloads:list' %}">← My Services</a>
+  <div class="d-flex justify-content-between align-items-start mt-3 mb-4">
+    <div>
+      <h1 class="h2 mb-1">{{ service.display_name }}</h1>
+      <p class="text-body-secondary">{{ service.service_definition.name }}</p>
+    </div>
+    {% include "workloads/components/status.html" %}
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <dl class="row mb-0">
+        <dt class="col-sm-4">Type</dt>
+        <dd class="col-sm-8">{{ service.service_definition.name }}</dd>
+        <dt class="col-sm-4">CPU</dt>
+        <dd class="col-sm-8">{{ service.cpu_units }}</dd>
+        <dt class="col-sm-4">Memory</dt>
+        <dd class="col-sm-8">{{ service.memory_mib }} MiB</dd>
+        <dt class="col-sm-4">Storage</dt>
+        <dd class="col-sm-8">{{ service.storage_mib }} MiB</dd>
+        <dt class="col-sm-4">Namespace</dt>
+        <dd class="col-sm-8">{{ service.namespace|default:"—" }}</dd>
+        <dt class="col-sm-4">Helm release</dt>
+        <dd class="col-sm-8">{{ service.release_name|default:"—" }}</dd>
+        <dt class="col-sm-4">URL</dt>
+        <dd class="col-sm-8">{{ service.public_url|default:"—" }}</dd>
+        <dt class="col-sm-4">Created</dt>
+        <dd class="col-sm-8 mb-0">{{ service.created_at }}</dd>
+      </dl>
+    </div>
+  </div>
+
+  {% if service.environment_variables.all %}
+    <div class="card shadow-sm mt-4">
+      <div class="card-header">Environment variables</div>
+      <div class="card-body">
+        <dl class="row mb-0">
+          {% for variable in service.environment_variables.all %}
+            <dt class="col-sm-4"><code>{{ variable.name }}</code></dt>
+            <dd class="col-sm-8{% if forloop.last %} mb-0{% endif %}">
+              {% if variable.is_secret %}<span class="text-body-secondary">Secret value hidden</span>{% else %}<code>{{ variable.value }}</code>{% endif %}
+            </dd>
+          {% endfor %}
+        </dl>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}
+

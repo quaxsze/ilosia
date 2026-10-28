@@ -1,0 +1,7 @@
+project_id        = "replace-with-scaleway-project-id"
+region            = "fr-par"
+cluster_name      = "ilosia"
+kubernetes_version = "1.35.3"
+node_type         = "DEV1-M"
+node_count        = 1
+

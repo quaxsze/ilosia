@@ -1,0 +1,32 @@
+[project]
+name = "ilosia"
+version = "0.1.0"
+description = "A self-service platform for on-demand development environments"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "boto3>=1.40,<2",
+    "django>=5.2,<5.3",
+    "django-prometheus>=2.4,<3",
+    "gunicorn>=23,<24",
+    "mozilla-django-oidc>=5.0,<6",
+    "psycopg[binary]>=3.2,<4",
+    "prometheus-client>=0.23,<1",
+    "whitenoise>=6.11,<7",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14,<1",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+

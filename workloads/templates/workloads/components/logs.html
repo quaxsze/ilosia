@@ -1,0 +1,8 @@
+<pre
+  id="service-logs"
+  class="bg-dark text-light rounded p-3 overflow-auto"
+  style="min-height: 20rem; max-height: 65vh;"
+  hx-get="{% url 'workloads:logs' service.id %}"
+  hx-trigger="every 5s"
+  hx-swap="outerHTML"
+>{{ logs }}</pre>

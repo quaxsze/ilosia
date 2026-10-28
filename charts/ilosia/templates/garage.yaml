@@ -1,0 +1,189 @@
+{{- if .Values.storage.garage.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: garage-config
+  labels:
+    {{- include "ilosia.commonLabels" . | nindent 4 }}
+data:
+  garage.toml: |
+    metadata_dir = "/var/lib/garage/meta"
+    data_dir = "/var/lib/garage/data"
+    db_engine = "sqlite"
+    replication_factor = 1
+    rpc_bind_addr = "[::]:3901"
+    rpc_public_addr = "127.0.0.1:3901"
+
+    [s3_api]
+    s3_region = {{ .Values.storage.region | quote }}
+    api_bind_addr = "[::]:3900"
+    root_domain = ".s3.garage.localhost"
+    public_endpoint = {{ .Values.storage.publicEndpointUrl | quote }}
+    public_endpoint_path_style = true
+
+    [admin]
+    api_bind_addr = "[::]:3903"
+    metrics_require_token = true
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.storage.garage.persistence.claimName }}
+  annotations:
+    helm.sh/resource-policy: keep
+  labels:
+    {{- include "ilosia.commonLabels" . | nindent 4 }}
+    app.kubernetes.io/name: garage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.storage.garage.persistence.size }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: garage
+  labels:
+    {{- include "ilosia.commonLabels" . | nindent 4 }}
+    app.kubernetes.io/name: garage
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: garage
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ .Values.storage | toJson | sha256sum }}
+      labels:
+        app.kubernetes.io/name: garage
+        {{- include "ilosia.commonLabels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: garage
+          image: {{ printf "%s:%s" .Values.storage.garage.image.repository .Values.storage.garage.image.tag | quote }}
+          imagePullPolicy: {{ .Values.storage.garage.image.pullPolicy }}
+          command:
+            - /garage
+            - server
+            - --single-node
+            - --default-access-key
+          env:
+            - name: GARAGE_CONFIG_FILE
+              value: /etc/garage.toml
+            - name: GARAGE_DEFAULT_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: S3_ACCESS_KEY
+            - name: GARAGE_DEFAULT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: S3_SECRET_KEY
+            - name: GARAGE_RPC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: GARAGE_RPC_SECRET
+            - name: GARAGE_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: GARAGE_ADMIN_TOKEN
+            - name: GARAGE_METRICS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: GARAGE_METRICS_TOKEN
+          ports:
+            - name: s3
+              containerPort: 3900
+            - name: admin
+              containerPort: 3903
+          readinessProbe:
+            tcpSocket:
+              port: s3
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: admin
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            {{- toYaml .Values.storage.garage.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/garage.toml
+              subPath: garage.toml
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/garage
+      volumes:
+        - name: config
+          configMap:
+            name: garage-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ .Values.storage.garage.persistence.claimName }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: garage
+  labels:
+    {{- include "ilosia.commonLabels" . | nindent 4 }}
+    app.kubernetes.io/name: garage
+spec:
+  selector:
+    app.kubernetes.io/name: garage
+  ports:
+    - name: s3
+      port: 3900
+      targetPort: s3
+    - name: admin
+      port: 3903
+      targetPort: admin
+---
+{{- if .Values.storage.garage.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: garage
+  labels:
+    {{- include "ilosia.commonLabels" . | nindent 4 }}
+    app.kubernetes.io/name: garage
+spec:
+  ingressClassName: {{ .Values.storage.garage.ingress.className }}
+  rules:
+    - host: {{ .Values.storage.garage.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: garage
+                port:
+                  name: s3
+{{- end }}
+{{- end }}

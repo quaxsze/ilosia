@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}My Services · Ilosia{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h1 class="h2">My Services</h1>
+      <p class="text-body-secondary mb-0">Applications launched from the catalog.</p>
+    </div>
+    <a class="btn btn-primary" href="{% url 'catalog:list' %}">Launch a service</a>
+  </div>
+
+  <div class="list-group shadow-sm">
+    {% for service in services %}
+      <a class="list-group-item list-group-item-action p-3" href="{% url 'workloads:detail' service.id %}">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <h2 class="h5 mb-1">{{ service.display_name }}</h2>
+            <span class="text-body-secondary">{{ service.service_definition.name }}</span>
+          </div>
+          {% include "workloads/components/status_badge.html" %}
+        </div>
+        <small class="text-body-secondary">Created {{ service.created_at }}</small>
+      </a>
+    {% empty %}
+      <div class="list-group-item p-4 text-center text-body-secondary">
+        You have not launched a service yet.
+      </div>
+    {% endfor %}
+  </div>
+{% endblock %}
+

@@ -1,0 +1,8 @@
+<span
+  class="badge text-bg-secondary"
+  {% if service.status != "DELETED" %}
+    hx-get="{% url 'workloads:status' service.id %}?badge=1"
+    hx-trigger="every 5s"
+    hx-swap="outerHTML"
+  {% endif %}
+>{{ service.get_status_display }}</span>
