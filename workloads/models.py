@@ -23,6 +23,8 @@ class ServiceInstance(models.Model):
         INSTALLING = "INSTALLING", "Installing"
         RUNNING = "RUNNING", "Running"
         FAILED = "FAILED", "Failed"
+        STOPPING = "STOPPING", "Stopping"
+        STOPPED = "STOPPED", "Stopped"
         DELETING = "DELETING", "Deleting"
         DELETED = "DELETED", "Deleted"
         UNKNOWN = "UNKNOWN", "Unknown"

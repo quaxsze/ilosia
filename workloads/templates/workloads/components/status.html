@@ -1,6 +1,6 @@
 <div
   class="d-flex align-items-center gap-2"
-  {% if service.status != "DELETED" %}
+  {% if service.status != "STOPPED" and service.status != "DELETED" %}
     hx-get="{% url 'workloads:status' service.id %}"
     hx-trigger="every 5s"
     hx-swap="outerHTML"
@@ -9,11 +9,25 @@
   {% if open_url %}
     <a class="btn btn-primary" href="{{ open_url }}" target="_blank" rel="noopener noreferrer">Open</a>
   {% endif %}
-  {% if service.status != "DELETED" %}
+  {% if service.status != "STOPPED" and service.status != "DELETED" %}
     <a class="btn btn-outline-secondary" href="{% url 'workloads:logs' service.id %}">Logs</a>
-    <form method="post" action="{% url 'workloads:delete' service.id %}" onsubmit="return confirm('Delete this service? Its persistent data will be kept.');">
+  {% endif %}
+  {% if service.status == "RUNNING" or service.status == "UNKNOWN" %}
+    <form method="post" action="{% url 'workloads:stop' service.id %}" onsubmit="return confirm('Stop this service? Its persistent data will be kept.');">
       {% csrf_token %}
-      <button class="btn btn-outline-danger" type="submit" {% if service.status == "DELETING" %}disabled{% endif %}>Delete</button>
+      <button class="btn btn-outline-secondary" type="submit">Stop</button>
+    </form>
+  {% endif %}
+  {% if service.status == "STOPPED" %}
+    <form method="post" action="{% url 'workloads:restart' service.id %}">
+      {% csrf_token %}
+      <button class="btn btn-primary" type="submit">Restart</button>
+    </form>
+  {% endif %}
+  {% if service.status != "DELETED" %}
+    <form method="post" action="{% url 'workloads:delete' service.id %}" onsubmit="return confirm('Permanently delete this service and all data on its persistent volume? This cannot be undone.');">
+      {% csrf_token %}
+      <button class="btn btn-outline-danger" type="submit" {% if service.status == "STOPPING" or service.status == "DELETING" or service.status == "INSTALLING" %}disabled{% endif %}>Delete service and data</button>
     </form>
   {% endif %}
   <span class="badge text-bg-secondary fs-6">{{ service.get_status_display }}</span>

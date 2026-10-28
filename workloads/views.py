@@ -6,6 +6,7 @@ from django.views.decorators.http import require_GET, require_POST
 from catalog.models import ServiceDefinition
 from infrastructure.exceptions import (
     ClusterUnavailableError,
+    HelmInstallError,
     HelmUninstallError,
     ServiceQuotaExceeded,
 )
@@ -13,11 +14,13 @@ from infrastructure.exceptions import (
 from .forms import LaunchServiceForm
 from .models import ServiceInstance
 from .services import (
-    delete_service,
+    delete_service_and_data,
     get_service_access_url,
     get_service_logs,
     launch_service,
     refresh_service_status,
+    restart_service,
+    stop_service,
 )
 
 
@@ -126,6 +129,48 @@ def service_logs(request, service_id):
 
 @login_required
 @require_POST
+def service_stop(request, service_id):
+    service = get_object_or_404(
+        ServiceInstance,
+        id=service_id,
+        user=request.user,
+    )
+    try:
+        stop_service(service)
+    except ValueError as error:
+        messages.error(request, str(error))
+        return redirect("workloads:detail", service_id=service.id)
+    except HelmUninstallError:
+        messages.error(request, "The service could not be stopped.")
+        return redirect("workloads:detail", service_id=service.id)
+
+    messages.success(request, f"{service.display_name} was stopped. Its data was kept.")
+    return redirect("workloads:detail", service_id=service.id)
+
+
+@login_required
+@require_POST
+def service_restart(request, service_id):
+    service = get_object_or_404(
+        ServiceInstance,
+        id=service_id,
+        user=request.user,
+    )
+    try:
+        restart_service(service)
+    except ValueError as error:
+        messages.error(request, str(error))
+        return redirect("workloads:detail", service_id=service.id)
+    except HelmInstallError:
+        messages.error(request, "The service could not be restarted.")
+        return redirect("workloads:detail", service_id=service.id)
+
+    messages.success(request, f"{service.display_name} is running again.")
+    return redirect("workloads:detail", service_id=service.id)
+
+
+@login_required
+@require_POST
 def service_delete(request, service_id):
     service = get_object_or_404(
         ServiceInstance,
@@ -133,10 +178,10 @@ def service_delete(request, service_id):
         user=request.user,
     )
     try:
-        delete_service(service)
+        delete_service_and_data(service)
     except (ClusterUnavailableError, HelmUninstallError):
-        messages.error(request, "The service could not be deleted.")
+        messages.error(request, "The service and its data could not be deleted.")
         return redirect("workloads:detail", service_id=service.id)
 
-    messages.success(request, f"{service.display_name} was deleted. Its data was kept.")
+    messages.success(request, f"{service.display_name} and its data were deleted.")
     return redirect("workloads:list")

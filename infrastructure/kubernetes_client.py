@@ -131,6 +131,14 @@ class KubernetesClient:
             ignored_statuses={404},
         )
 
+    def delete_persistent_volume_claim(self, *, namespace, name):
+        self._request(
+            f"/api/v1/namespaces/{quote(namespace, safe='')}/persistentvolumeclaims/"
+            f"{quote(name, safe='')}",
+            method="DELETE",
+            ignored_statuses={404},
+        )
+
     def _request(
         self, path, *, method="GET", payload=None, ignored_statuses=frozenset()
     ):

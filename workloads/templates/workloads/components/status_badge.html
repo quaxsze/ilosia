@@ -1,6 +1,6 @@
 <span
   class="badge text-bg-secondary"
-  {% if service.status != "DELETED" %}
+  {% if service.status != "STOPPED" and service.status != "DELETED" %}
     hx-get="{% url 'workloads:status' service.id %}?badge=1"
     hx-trigger="every 5s"
     hx-swap="outerHTML"

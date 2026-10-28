@@ -276,6 +276,21 @@ class WorkloadViewTests(TestCase):
         self.assertContains(response, "Alice notebook")
         self.assertNotContains(response, "Bob notebook")
 
+    def test_detail_shows_actions_for_the_current_state(self):
+        service = self.instance_for(self.user, "Alice notebook")
+        url = reverse("workloads:detail", kwargs={"service_id": service.id})
+
+        running_response = self.client.get(url)
+        self.assertContains(running_response, ">Stop<", html=False)
+        self.assertNotContains(running_response, ">Restart<", html=False)
+
+        service.status = ServiceInstance.Status.STOPPED
+        service.save(update_fields=("status", "updated_at"))
+        stopped_response = self.client.get(url)
+        self.assertContains(stopped_response, ">Restart<", html=False)
+        self.assertContains(stopped_response, "Delete service and data")
+        self.assertNotContains(stopped_response, ">Stop<", html=False)
+
     def test_user_cannot_view_another_users_service(self):
         service = self.instance_for(self.other_user, "Bob notebook")
 
@@ -306,6 +321,19 @@ class WorkloadViewTests(TestCase):
         self.assertEqual(service.status, ServiceInstance.Status.INSTALLING)
 
     @patch("workloads.services.KubernetesClient")
+    def test_stopped_status_does_not_query_kubernetes(self, client_class):
+        service = self.instance_for(self.user, "Alice notebook")
+        service.status = ServiceInstance.Status.STOPPED
+        service.save(update_fields=("status", "updated_at"))
+
+        response = self.client.get(
+            reverse("workloads:status", kwargs={"service_id": service.id})
+        )
+
+        self.assertContains(response, "Stopped")
+        client_class.assert_not_called()
+
+    @patch("workloads.services.KubernetesClient")
     def test_logs_are_limited_and_html_escaped(self, client_class):
         service = self.instance_for(self.user, "Alice notebook")
         client_class.return_value.get_pod_logs.return_value = (
@@ -327,15 +355,101 @@ class WorkloadViewTests(TestCase):
 
     @patch("workloads.services.KubernetesClient")
     @patch("workloads.services.HelmClient")
-    def test_delete_uninstalls_release_and_keeps_history(
+    def test_stop_uninstalls_release_and_keeps_data(
         self, helm_client_class, kubernetes_client_class
     ):
         service = self.instance_for(self.user, "Alice notebook")
+
+        response = self.client.post(
+            reverse("workloads:stop", kwargs={"service_id": service.id})
+        )
+
+        self.assertRedirects(
+            response, reverse("workloads:detail", kwargs={"service_id": service.id})
+        )
+        service.refresh_from_db()
+        self.assertEqual(service.status, ServiceInstance.Status.STOPPED)
+        helm_client_class.return_value.uninstall.assert_called_once_with(
+            release_name=service.release_name,
+            namespace=service.namespace,
+        )
+        kubernetes_client_class.assert_not_called()
+
+    @patch("workloads.services.HelmClient")
+    def test_failed_stop_is_reported_and_not_marked_stopped(self, helm_client_class):
+        service = self.instance_for(self.user, "Alice notebook")
+        helm_client_class.return_value.uninstall.side_effect = HelmUninstallError(
+            "failed"
+        )
+
+        with self.assertLogs("workloads.services", level="ERROR"):
+            response = self.client.post(
+                reverse("workloads:stop", kwargs={"service_id": service.id})
+            )
+
+        self.assertRedirects(
+            response, reverse("workloads:detail", kwargs={"service_id": service.id})
+        )
+        service.refresh_from_db()
+        self.assertEqual(service.status, ServiceInstance.Status.UNKNOWN)
+
+    @override_settings(S3_ENDPOINT_URL="http://s3:9000")
+    @patch("workloads.services.HelmClient")
+    def test_restart_reuses_release_pvc_and_environment(self, helm_client_class):
+        service = self.instance_for(self.user, "Alice notebook")
+        service.status = ServiceInstance.Status.STOPPED
+        service.save(update_fields=("status", "updated_at"))
+        ServiceEnvironmentVariable.objects.create(
+            service_instance=service,
+            name="MODE",
+            value="development",
+        )
         ServiceEnvironmentVariable.objects.create(
             service_instance=service,
             name="API_KEY",
             is_secret=True,
         )
+
+        response = self.client.post(
+            reverse("workloads:restart", kwargs={"service_id": service.id})
+        )
+
+        self.assertRedirects(
+            response, reverse("workloads:detail", kwargs={"service_id": service.id})
+        )
+        service.refresh_from_db()
+        self.assertEqual(service.status, ServiceInstance.Status.RUNNING)
+        install = helm_client_class.return_value.install.call_args.kwargs
+        self.assertEqual(install["release_name"], service.release_name)
+        self.assertEqual(install["namespace"], service.namespace)
+        self.assertEqual(install["values"]["environment"], {"MODE": "development"})
+        self.assertIn("API_KEY", install["values"]["secretEnvironment"])
+        self.assertIn("S3_BUCKET", install["values"]["secretEnvironment"])
+
+    @patch("workloads.services.HelmClient")
+    def test_failed_restart_remains_stopped(self, helm_client_class):
+        service = self.instance_for(self.user, "Alice notebook")
+        service.status = ServiceInstance.Status.STOPPED
+        service.save(update_fields=("status", "updated_at"))
+        helm_client_class.return_value.install.side_effect = HelmInstallError("failed")
+
+        with self.assertLogs("workloads.services", level="ERROR"):
+            response = self.client.post(
+                reverse("workloads:restart", kwargs={"service_id": service.id})
+            )
+
+        self.assertRedirects(
+            response, reverse("workloads:detail", kwargs={"service_id": service.id})
+        )
+        service.refresh_from_db()
+        self.assertEqual(service.status, ServiceInstance.Status.STOPPED)
+
+    @patch("workloads.services.KubernetesClient")
+    @patch("workloads.services.HelmClient")
+    def test_delete_removes_release_pvc_and_secret(
+        self, helm_client_class, kubernetes_client_class
+    ):
+        service = self.instance_for(self.user, "Alice notebook")
 
         response = self.client.post(
             reverse("workloads:delete", kwargs={"service_id": service.id})
@@ -348,37 +462,25 @@ class WorkloadViewTests(TestCase):
             release_name=service.release_name,
             namespace=service.namespace,
         )
-        kubernetes_client_class.return_value.delete_secret.assert_called_once_with(
+        kubernetes = kubernetes_client_class.return_value
+        kubernetes.delete_persistent_volume_claim.assert_called_once_with(
+            namespace=service.namespace,
+            name=f"{service.release_name}-data",
+        )
+        kubernetes.delete_secret.assert_called_once_with(
             namespace=service.namespace,
             name=f"{service.release_name}-environment",
         )
 
-    @patch("workloads.services.HelmClient")
-    def test_failed_delete_is_reported_and_not_marked_deleted(self, helm_client_class):
-        service = self.instance_for(self.user, "Alice notebook")
-        helm_client_class.return_value.uninstall.side_effect = HelmUninstallError(
-            "failed"
-        )
-
-        with self.assertLogs("workloads.services", level="ERROR"):
-            response = self.client.post(
-                reverse("workloads:delete", kwargs={"service_id": service.id})
-            )
-
-        self.assertRedirects(
-            response, reverse("workloads:detail", kwargs={"service_id": service.id})
-        )
-        service.refresh_from_db()
-        self.assertEqual(service.status, ServiceInstance.Status.UNKNOWN)
-
-    def test_delete_rejects_get(self):
+    def test_lifecycle_actions_reject_get(self):
         service = self.instance_for(self.user, "Alice notebook")
 
-        response = self.client.get(
-            reverse("workloads:delete", kwargs={"service_id": service.id})
-        )
-
-        self.assertEqual(response.status_code, 405)
+        for action in ("stop", "restart", "delete"):
+            with self.subTest(action=action):
+                response = self.client.get(
+                    reverse(f"workloads:{action}", kwargs={"service_id": service.id})
+                )
+                self.assertEqual(response.status_code, 405)
 
     @patch("workloads.services.HelmClient")
     def test_delete_handles_an_old_database_only_service(self, helm_client_class):
@@ -414,10 +516,12 @@ class WorkloadViewTests(TestCase):
             with self.subTest(url=url):
                 self.assertEqual(self.client.get(url).status_code, 404)
 
-        delete_response = self.client.post(
-            reverse("workloads:delete", kwargs={"service_id": service.id})
-        )
-        self.assertEqual(delete_response.status_code, 404)
+        for action in ("stop", "restart", "delete"):
+            with self.subTest(action=action):
+                response = self.client.post(
+                    reverse(f"workloads:{action}", kwargs={"service_id": service.id})
+                )
+                self.assertEqual(response.status_code, 404)
         helm_client_class.return_value.uninstall.assert_not_called()
         refresh_service_status.assert_not_called()
 

@@ -174,6 +174,20 @@ class KubernetesClientTests(SimpleTestCase):
         self.assertEqual(request.call_args.kwargs["method"], "DELETE")
         self.assertEqual(request.call_args.kwargs["ignored_statuses"], {404})
 
+    def test_pvc_deletion_is_idempotent(self):
+        client = KubernetesClient()
+        with patch.object(client, "_request") as request:
+            client.delete_persistent_volume_claim(
+                namespace="user-1", name="jupyter-abc-data"
+            )
+
+        self.assertEqual(
+            request.call_args.args[0],
+            "/api/v1/namespaces/user-1/persistentvolumeclaims/jupyter-abc-data",
+        )
+        self.assertEqual(request.call_args.kwargs["method"], "DELETE")
+        self.assertEqual(request.call_args.kwargs["ignored_statuses"], {404})
+
 
 class StorageClientTests(SimpleTestCase):
     def test_bucket_is_created_when_missing(self):

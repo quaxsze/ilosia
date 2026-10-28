@@ -18,6 +18,16 @@ urlpatterns = [
         name="logs",
     ),
     path(
+        "services/<uuid:service_id>/stop/",
+        views.service_stop,
+        name="stop",
+    ),
+    path(
+        "services/<uuid:service_id>/restart/",
+        views.service_restart,
+        name="restart",
+    ),
+    path(
         "services/<uuid:service_id>/delete/",
         views.service_delete,
         name="delete",

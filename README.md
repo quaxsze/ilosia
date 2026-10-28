@@ -149,21 +149,22 @@ puis sélectionner CPU, mémoire et stockage. Le premier lancement peut prendre
 environ une minute pendant le téléchargement de l'image officielle
 `quay.io/jupyter/minimal-notebook:2026-07-28`.
 
-Django crée un namespace par utilisateur, installe `charts/jupyter`, attend que
-le Pod soit prêt puis affiche les actions **Open**, **Logs** et **Delete**. L'URL
-d'ouverture contient un token Jupyter dérivé côté serveur; ce token n'est pas
-stocké dans PostgreSQL.
+Django crée un namespace par utilisateur et un PVC par service, installe
+`charts/jupyter`, attend que le Pod soit prêt puis affiche les actions **Open**,
+**Logs**, **Stop** et **Delete service and data**. L'URL d'ouverture contient un
+token Jupyter dérivé côté serveur; ce token n'est pas stocké dans PostgreSQL.
 
 L'état et les 200 dernières lignes de logs sont lus depuis l'API Kubernetes avec
 le ServiceAccount du Pod Django. HTMX rafraîchit ces blocs toutes les cinq
-secondes. **Delete** exécute `helm uninstall`, conserve l'historique Django et le
-PVC, puis marque le service comme supprimé.
+secondes. **Stop** désinstalle la release mais conserve son PVC et son Secret;
+**Restart** les réutilise. **Delete service and data** supprime explicitement la
+release, le PVC et le Secret tout en conservant l'historique Django.
 
 Le formulaire de lancement accepte des variables normales et secrètes au format
 `NAME=value`, une par ligne. Les variables normales sont conservées en base. Pour
 les secrets, Django ne conserve que le nom : la valeur est envoyée directement à
 un Secret Kubernetes externe à Helm, injectée avec `secretKeyRef`, masquée dans
-l'interface et supprimée avec le workload.
+l'interface, conservée pendant un arrêt et supprimée avec les données du service.
 
 La couche S3 compatible fournit un bucket `user-<id>` par utilisateur, la page
 `/storage/`, des téléchargements par URL présignée et la suppression d'objets.

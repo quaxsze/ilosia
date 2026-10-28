@@ -32,6 +32,12 @@ FAILED_CONTAINER_REASONS = {
     "ErrImagePull",
     "ImagePullBackOff",
 }
+S3_ENVIRONMENT_NAMES = {
+    "S3_ENDPOINT",
+    "S3_BUCKET",
+    "S3_ACCESS_KEY",
+    "S3_SECRET_KEY",
+}
 
 
 def get_service_access_url(instance):
@@ -180,7 +186,12 @@ def launch_service(*, user, definition, data):
 
 
 def refresh_service_status(instance, *, client=None):
-    if instance.status == ServiceInstance.Status.DELETED:
+    if instance.status in {
+        ServiceInstance.Status.STOPPING,
+        ServiceInstance.Status.STOPPED,
+        ServiceInstance.Status.DELETING,
+        ServiceInstance.Status.DELETED,
+    }:
         return instance.status
     if not instance.namespace or not instance.release_name:
         return instance.status
@@ -251,7 +262,71 @@ def get_service_logs(instance):
         return "Logs are temporarily unavailable."
 
 
-def delete_service(instance):
+def stop_service(instance):
+    if instance.status == ServiceInstance.Status.STOPPED:
+        return
+    if instance.status not in {
+        ServiceInstance.Status.RUNNING,
+        ServiceInstance.Status.UNKNOWN,
+    }:
+        raise ValueError("Only running services can be stopped.")
+
+    instance.status = ServiceInstance.Status.STOPPING
+    instance.save(update_fields=("status", "updated_at"))
+    # shortcut: stopping blocks one web worker; add a job queue when operations become long-running.
+    try:
+        HelmClient().uninstall(
+            release_name=instance.release_name,
+            namespace=instance.namespace,
+        )
+    except HelmUninstallError:
+        logger.exception("Jupyter stop failed for service %s", instance.id)
+        instance.status = ServiceInstance.Status.UNKNOWN
+        instance.save(update_fields=("status", "updated_at"))
+        raise
+
+    instance.status = ServiceInstance.Status.STOPPED
+    instance.save(update_fields=("status", "updated_at"))
+
+
+def restart_service(instance):
+    if instance.status != ServiceInstance.Status.STOPPED:
+        raise ValueError("Only stopped services can be restarted.")
+    if not instance.namespace or not instance.release_name:
+        raise ValueError("This service has no Kubernetes workload to restart.")
+
+    variables = instance.environment_variables.all()
+    environment = {
+        variable.name: variable.value for variable in variables if not variable.is_secret
+    }
+    secret_names = {variable.name for variable in variables if variable.is_secret}
+    if settings.S3_ENDPOINT_URL:
+        secret_names.update(S3_ENVIRONMENT_NAMES)
+
+    instance.status = ServiceInstance.Status.INSTALLING
+    instance.save(update_fields=("status", "updated_at"))
+    try:
+        HelmClient().install(
+            release_name=instance.release_name,
+            chart_path=settings.WORKLOAD_CHART_PATH,
+            namespace=instance.namespace,
+            values=build_jupyter_values(
+                instance,
+                environment=environment,
+                secret_names=secret_names,
+            ),
+        )
+    except HelmInstallError:
+        logger.exception("Jupyter restart failed for service %s", instance.id)
+        instance.status = ServiceInstance.Status.STOPPED
+        instance.save(update_fields=("status", "updated_at"))
+        raise
+
+    instance.status = ServiceInstance.Status.RUNNING
+    instance.save(update_fields=("status", "updated_at"))
+
+
+def delete_service_and_data(instance):
     if instance.status == ServiceInstance.Status.DELETED:
         return
     if not instance.namespace or not instance.release_name:
@@ -261,7 +336,7 @@ def delete_service(instance):
 
     instance.status = ServiceInstance.Status.DELETING
     instance.save(update_fields=("status", "updated_at"))
-    # shortcut: deletion blocks one web worker; add a job queue when deletions become long-running.
+    # shortcut: deletion blocks one web worker; add a job queue when operations become long-running.
     try:
         HelmClient().uninstall(
             release_name=instance.release_name,
@@ -273,13 +348,18 @@ def delete_service(instance):
         instance.save(update_fields=("status", "updated_at"))
         raise
 
+    kubernetes = KubernetesClient()
     try:
-        KubernetesClient().delete_secret(
+        kubernetes.delete_persistent_volume_claim(
+            namespace=instance.namespace,
+            name=f"{instance.release_name}-data",
+        )
+        kubernetes.delete_secret(
             namespace=instance.namespace,
             name=f"{instance.release_name}-environment",
         )
     except ClusterUnavailableError:
-        logger.exception("Secret deletion failed for service %s", instance.id)
+        logger.exception("Jupyter data deletion failed for service %s", instance.id)
         instance.status = ServiceInstance.Status.UNKNOWN
         instance.save(update_fields=("status", "updated_at"))
         raise
