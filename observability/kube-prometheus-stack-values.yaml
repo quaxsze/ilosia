@@ -10,6 +10,10 @@ kubeProxy:
 kubeScheduler:
   enabled: false
 
+prometheusOperator:
+  admissionWebhooks:
+    enabled: false
+
 grafana:
   admin:
     existingSecret: grafana-admin

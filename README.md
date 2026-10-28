@@ -211,7 +211,9 @@ kubectl get secret grafana-admin --namespace monitoring \
 
 Prometheus collecte `/metrics`, notamment les compteurs de lancement, d'échec
 et de suppression. Alloy lit les logs des Pods par l'API Kubernetes et les
-envoie à Loki. Ces composants sont mono-réplique et dimensionnés pour k3d.
+envoie à Loki. Ces composants sont mono-réplique et dimensionnés pour k3d. Le
+webhook d'admission Prometheus est désactivé localement pour éviter une
+dépendance circulaire entre ses certificats et les hooks Argo CD.
 
 ## CI, GHCR et GitOps
 
