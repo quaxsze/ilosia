@@ -3,6 +3,12 @@ set -eu
 
 namespace="${1:-user-1}"
 other_namespace="${2:-}"
+temporary_mode=false
+temporary_service_id=""
+if [ "$other_namespace" = "--with-temporary-user" ]; then
+  temporary_mode=true
+  other_namespace=""
+fi
 pods=$(kubectl get pods \
   --namespace "$namespace" \
   --selector app.kubernetes.io/name=jupyter \
@@ -95,8 +101,36 @@ s3 = boto3.client(
 )
 s3.delete_object(Bucket=os.environ["S3_BUCKET"], Key=os.environ["CHECK_KEY"])
 PY
+  if [ -n "$temporary_service_id" ]; then
+    echo "Cleaning up temporary service $temporary_service_id..."
+    if ! kubectl exec --namespace ilosia deployment/ilosia-web -- \
+      python manage.py storage_test_workload cleanup \
+      --service-id "$temporary_service_id"; then
+      echo "WARNING: application cleanup was incomplete." >&2
+    fi
+    kubectl delete namespace "$other_namespace" --wait=false >/dev/null 2>&1 || true
+    temporary_service_id=""
+  fi
 }
 trap cleanup EXIT INT TERM
+
+if [ "$temporary_mode" = true ]; then
+  echo "Creating a temporary user and Jupyter service..."
+  temporary_result=$(kubectl exec --namespace ilosia deployment/ilosia-web -- \
+    python manage.py storage_test_workload create)
+  set -- $temporary_result
+  if [ "$#" -ne 3 ]; then
+    echo "Unexpected temporary service response: $temporary_result" >&2
+    exit 1
+  fi
+  other_namespace=$1
+  temporary_service_id=$2
+  if [ "$3" != "RUNNING" ]; then
+    echo "Temporary Jupyter launch failed with status $3." >&2
+    exit 1
+  fi
+  echo "Temporary Jupyter $temporary_service_id is running in $other_namespace."
+fi
 
 kubectl exec --stdin --namespace "$namespace" "$pod_a" -- \
   env CHECK_KEY="$key" CHECK_CONTENT="$content" CHECK_LOCAL="$local_file" \
@@ -153,11 +187,12 @@ echo "PASS: $pod_a and $pod_b use distinct PVCs ($pvc_a, $pvc_b)."
 echo "PASS: both services share the S3 bucket $bucket_a."
 
 if [ -n "$other_namespace" ]; then
-  other_pod=$(kubectl get pods \
+  other_pods=$(kubectl get pods \
     --namespace "$other_namespace" \
     --selector app.kubernetes.io/name=jupyter \
     --field-selector status.phase=Running \
-    --output jsonpath='{.items[0].metadata.name}')
+    --output jsonpath='{range .items[*]}{.metadata.name}{" "}{end}')
+  other_pod=${other_pods%% *}
   if [ -z "$other_pod" ]; then
     echo "Launch one running Jupyter service in $other_namespace, then retry." >&2
     exit 1

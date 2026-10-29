@@ -192,6 +192,13 @@ sa clé ne peut pas accéder au bucket du premier :
 ./scripts/check_jupyter_storage.sh user-1 user-2
 ```
 
+Ou laisser le script créer un utilisateur Django non connectable et un Jupyter
+temporaires, puis nettoyer automatiquement leurs ressources :
+
+```bash
+./scripts/check_jupyter_storage.sh user-1 --with-temporary-user
+```
+
 Le lancement est synchrone pendant ce milestone. Une file de tâches sera ajoutée
 uniquement si les opérations deviennent trop longues pour les workers web.
 

@@ -232,6 +232,14 @@ class StorageClientTests(SimpleTestCase):
 
         self.assertEqual([item["Key"] for item in objects], ["one", "two"])
 
+    def test_bucket_deletion_uses_the_platform_client(self):
+        client = patch("infrastructure.storage_client.boto3.client").start()
+        self.addCleanup(patch.stopall)
+
+        StorageClient().delete_bucket("user-2")
+
+        client.return_value.delete_bucket.assert_called_once_with(Bucket="user-2")
+
     def test_user_bucket_is_stable(self):
         user = type("User", (), {"pk": 42})()
 
@@ -299,3 +307,25 @@ class GarageAdminClientTests(SimpleTestCase):
             request.call_args_list[1].kwargs,
             {"method": "POST", "payload": {"name": "ilosia-user-2"}},
         )
+
+    def test_user_key_deletion_is_idempotent(self):
+        admin = GarageAdminClient("http://garage:3903", "admin-token")
+        key = {"name": "ilosia-user-2", "accessKeyId": "other-access"}
+        with patch.object(admin, "_request", side_effect=[key, None]) as request:
+            admin.delete_key("ilosia-user-2")
+
+        self.assertEqual(request.call_args_list[1].args, ("DeleteKey",))
+        self.assertEqual(
+            request.call_args_list[1].kwargs,
+            {"method": "POST", "query": {"id": "other-access"}},
+        )
+
+    @patch("infrastructure.storage_client.urlopen")
+    def test_empty_success_response_is_supported(self, urlopen):
+        urlopen.return_value.__enter__.return_value.read.return_value = b""
+
+        response = GarageAdminClient("http://garage:3903", "admin-token")._request(
+            "DeleteKey", method="POST"
+        )
+
+        self.assertIsNone(response)

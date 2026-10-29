@@ -1,7 +1,12 @@
+import uuid
+from io import StringIO
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
@@ -606,3 +611,80 @@ class PodStatusTests(TestCase):
         for pods, expected in cases:
             with self.subTest(expected=expected):
                 self.assertEqual(_pods_status(pods), expected)
+
+
+class StorageTestWorkloadCommandTests(TestCase):
+    @patch("workloads.management.commands.storage_test_workload.launch_service")
+    def test_create_uses_an_unusable_temporary_user(self, launch_service):
+        service_id = uuid.uuid4()
+
+        def launch(*, user, **kwargs):
+            return SimpleNamespace(
+                namespace=f"user-{user.pk}",
+                id=service_id,
+                status=ServiceInstance.Status.RUNNING,
+            )
+
+        launch_service.side_effect = launch
+        output = StringIO()
+
+        call_command("storage_test_workload", "create", stdout=output)
+
+        user = get_user_model().objects.get(username__startswith="ilosia-storage-test-")
+        self.assertFalse(user.has_usable_password())
+        self.assertEqual(
+            output.getvalue().strip(),
+            f"user-{user.pk} {service_id} {ServiceInstance.Status.RUNNING}",
+        )
+        data = launch_service.call_args.kwargs["data"]
+        self.assertEqual(data["display_name"], "Storage isolation check")
+        self.assertEqual(data["environment_variables"], {})
+
+    @patch("workloads.management.commands.storage_test_workload.GarageAdminClient")
+    @patch("workloads.management.commands.storage_test_workload.StorageClient")
+    @patch(
+        "workloads.management.commands.storage_test_workload.delete_service_and_data"
+    )
+    def test_cleanup_removes_every_temporary_resource(
+        self, delete_service, storage_client, garage_admin
+    ):
+        user = get_user_model().objects.create_user(
+            username="ilosia-storage-test-cleanup", password=None
+        )
+        service = ServiceInstance.objects.create(
+            user=user,
+            service_definition=ServiceDefinition.objects.get(slug="jupyter"),
+            display_name="Storage isolation check",
+            status=ServiceInstance.Status.RUNNING,
+            cpu_units=1,
+            memory_mib=2048,
+            storage_mib=5120,
+            release_name=f"jupyter-{uuid.uuid4().hex}",
+            namespace=f"user-{user.pk}",
+        )
+
+        call_command("storage_test_workload", "cleanup", service_id=str(service.id))
+
+        delete_service.assert_called_once()
+        storage_client.return_value.delete_bucket.assert_called_once_with(
+            f"user-{user.pk}"
+        )
+        garage_admin.return_value.delete_key.assert_called_once_with(
+            f"ilosia-user-{user.pk}"
+        )
+        self.assertFalse(get_user_model().objects.filter(pk=user.pk).exists())
+
+    def test_cleanup_refuses_a_real_user(self):
+        user = get_user_model().objects.create_user(username="alice", password=None)
+        service = ServiceInstance.objects.create(
+            user=user,
+            service_definition=ServiceDefinition.objects.get(slug="jupyter"),
+            display_name="Real notebook",
+            status=ServiceInstance.Status.RUNNING,
+            cpu_units=1,
+            memory_mib=2048,
+            storage_mib=5120,
+        )
+
+        with self.assertRaisesMessage(CommandError, "non-test user"):
+            call_command("storage_test_workload", "cleanup", service_id=str(service.id))

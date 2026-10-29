@@ -50,6 +50,26 @@ class GarageAdminClient:
         )
         return access_key, secret_key
 
+    def delete_key(self, key_name):
+        key = self._request(
+            "GetKeyInfo",
+            query={"search": key_name},
+            ignored_statuses={404},
+        )
+        if key is None:
+            return
+        if (
+            not isinstance(key, dict)
+            or key.get("name") != key_name
+            or not key.get("accessKeyId")
+        ):
+            raise StorageError("Garage returned an unexpected access key")
+        self._request(
+            "DeleteKey",
+            method="POST",
+            query={"id": key["accessKeyId"]},
+        )
+
     def _request(
         self,
         operation,
@@ -73,7 +93,8 @@ class GarageAdminClient:
             with urlopen(
                 Request(url, data=data, headers=headers, method=method), timeout=5
             ) as response:
-                return json.loads(response.read())
+                body = response.read()
+                return json.loads(body) if body else None
         except HTTPError as error:
             if error.code in ignored_statuses:
                 return None
@@ -137,6 +158,12 @@ class StorageClient:
     def delete_object(self, bucket, key):
         try:
             self.client.delete_object(Bucket=bucket, Key=key)
+        except (BotoCoreError, ClientError) as error:
+            raise StorageError(str(error)) from error
+
+    def delete_bucket(self, bucket):
+        try:
+            self.client.delete_bucket(Bucket=bucket)
         except (BotoCoreError, ClientError) as error:
             raise StorageError(str(error)) from error
 
