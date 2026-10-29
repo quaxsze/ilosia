@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 
 from catalog.models import ServiceDefinition
-from infrastructure.storage_client import GarageAdminClient, StorageClient, user_bucket
+from infrastructure.storage_client import GarageAdminClient, user_bucket
 from workloads.models import ServiceInstance
 from workloads.services import delete_service_and_data, launch_service
 
@@ -80,10 +80,11 @@ class Command(BaseCommand):
                 f"service {instance.id}",
                 lambda instance=instance: delete_service_and_data(instance),
             )
-        attempt("bucket", lambda: StorageClient().delete_bucket(bucket))
+        garage = GarageAdminClient()
+        attempt("bucket", lambda: garage.delete_bucket(bucket))
         attempt(
             "access key",
-            lambda: GarageAdminClient().delete_key(f"ilosia-user-{user.pk}"),
+            lambda: garage.delete_key(f"ilosia-user-{user.pk}"),
         )
         user.delete()
         if failures:

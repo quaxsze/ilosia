@@ -660,12 +660,11 @@ class StorageTestWorkloadCommandTests(TestCase):
         )
 
     @patch("workloads.management.commands.storage_test_workload.GarageAdminClient")
-    @patch("workloads.management.commands.storage_test_workload.StorageClient")
     @patch(
         "workloads.management.commands.storage_test_workload.delete_service_and_data"
     )
     def test_cleanup_removes_every_temporary_resource(
-        self, delete_service, storage_client, garage_admin
+        self, delete_service, garage_admin
     ):
         user = get_user_model().objects.create_user(
             username="ilosia-storage-test-cleanup", password=None
@@ -687,7 +686,7 @@ class StorageTestWorkloadCommandTests(TestCase):
         call_command("storage_test_workload", "cleanup", user_id=str(user.pk))
 
         self.assertEqual(delete_service.call_count, 2)
-        storage_client.return_value.delete_bucket.assert_called_once_with(
+        garage_admin.return_value.delete_bucket.assert_called_once_with(
             f"user-{user.pk}"
         )
         garage_admin.return_value.delete_key.assert_called_once_with(

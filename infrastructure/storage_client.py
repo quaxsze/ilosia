@@ -86,6 +86,31 @@ class GarageAdminClient:
             query={"id": key["accessKeyId"]},
         )
 
+    def delete_bucket(self, bucket):
+        bucket_info = self._request(
+            "GetBucketInfo",
+            query={"globalAlias": bucket},
+            ignored_statuses={404},
+        )
+        if bucket_info is None:
+            return
+        if not isinstance(bucket_info, dict) or not bucket_info.get("id"):
+            raise StorageError("Garage returned an unexpected bucket")
+        self._request(
+            "DeleteBucket",
+            method="POST",
+            query={"id": bucket_info["id"]},
+        )
+        if (
+            self._request(
+                "GetBucketInfo",
+                query={"globalAlias": bucket},
+                ignored_statuses={404},
+            )
+            is not None
+        ):
+            raise StorageError("Garage bucket still exists after deletion")
+
     def _request(
         self,
         operation,
@@ -174,12 +199,6 @@ class StorageClient:
     def delete_object(self, bucket, key):
         try:
             self.client.delete_object(Bucket=bucket, Key=key)
-        except (BotoCoreError, ClientError) as error:
-            raise StorageError(str(error)) from error
-
-    def delete_bucket(self, bucket):
-        try:
-            self.client.delete_bucket(Bucket=bucket)
         except (BotoCoreError, ClientError) as error:
             raise StorageError(str(error)) from error
 
