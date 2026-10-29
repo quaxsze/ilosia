@@ -172,6 +172,16 @@ Garage tourne en mono-nœud local avec un PVC et expose son API S3 sur
 <http://garage.localhost:8080/>. Ses clés sont lues depuis
 `ilosia-secrets`, jamais depuis les values Helm.
 
+Avec deux Jupyter actifs pour le même utilisateur, vérifier automatiquement le
+partage S3 et l'isolation de leurs PVC :
+
+```bash
+./scripts/check_jupyter_storage.sh user-1
+```
+
+Le script installe temporairement `boto3` dans les Pods si nécessaire, utilise
+des fichiers de test uniques, puis les supprime.
+
 Le lancement est synchrone pendant ce milestone. Une file de tâches sera ajoutée
 uniquement si les opérations deviennent trop longues pour les workers web.
 
