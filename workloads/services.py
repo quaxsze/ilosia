@@ -15,7 +15,7 @@ from infrastructure.exceptions import (
 )
 from infrastructure.helm_client import HelmClient
 from infrastructure.kubernetes_client import KubernetesClient
-from infrastructure.storage_client import StorageClient, user_bucket
+from infrastructure.storage_client import GarageAdminClient, StorageClient, user_bucket
 
 from .metrics import (
     service_delete_total,
@@ -74,6 +74,26 @@ def _public_url(host):
     return urlunsplit((settings.WORKLOAD_INGRESS_SCHEME, netloc, "/", "", ""))
 
 
+def _workload_s3_environment(user):
+    if not settings.S3_ENDPOINT_URL:
+        return {}
+    # Serializing per user prevents two simultaneous launches from creating two keys.
+    with transaction.atomic():
+        get_user_model().objects.select_for_update().get(pk=user.pk)
+        bucket = user_bucket(user)
+        StorageClient().ensure_bucket(bucket)
+        access_key, secret_key = GarageAdminClient().ensure_bucket_access(
+            bucket=bucket,
+            key_name=f"ilosia-user-{user.pk}",
+        )
+    return {
+        "S3_ENDPOINT": settings.S3_ENDPOINT_URL,
+        "S3_BUCKET": bucket,
+        "S3_ACCESS_KEY": access_key,
+        "S3_SECRET_KEY": secret_key,
+    }
+
+
 def launch_service(*, user, definition, data):
     if definition.slug != "jupyter":
         raise ValueError(f"Unsupported service definition: {definition.slug}")
@@ -130,16 +150,7 @@ def launch_service(*, user, definition, data):
     secret_created = False
     service_launch_total.inc()
     try:
-        s3_environment = {}
-        if settings.S3_ENDPOINT_URL:
-            bucket = user_bucket(user)
-            StorageClient().ensure_bucket(bucket)
-            s3_environment = {
-                "S3_ENDPOINT": settings.S3_ENDPOINT_URL,
-                "S3_BUCKET": bucket,
-                "S3_ACCESS_KEY": settings.S3_ACCESS_KEY,
-                "S3_SECRET_KEY": settings.S3_SECRET_KEY,
-            }
+        s3_environment = _workload_s3_environment(user)
         kubernetes.ensure_namespace(
             instance.namespace,
             quota=settings.USER_NAMESPACE_QUOTA,
@@ -302,12 +313,18 @@ def restart_service(instance):
         if not variable.is_secret
     }
     secret_names = {variable.name for variable in variables if variable.is_secret}
-    if settings.S3_ENDPOINT_URL:
-        secret_names.update(S3_ENVIRONMENT_NAMES)
 
     instance.status = ServiceInstance.Status.INSTALLING
     instance.save(update_fields=("status", "updated_at"))
     try:
+        s3_environment = _workload_s3_environment(instance.user)
+        if s3_environment:
+            KubernetesClient().patch_secret(
+                namespace=instance.namespace,
+                name=f"{instance.release_name}-environment",
+                string_data=s3_environment,
+            )
+            secret_names.update(S3_ENVIRONMENT_NAMES)
         HelmClient().install(
             release_name=instance.release_name,
             chart_path=settings.WORKLOAD_CHART_PATH,
@@ -318,7 +335,7 @@ def restart_service(instance):
                 secret_names=secret_names,
             ),
         )
-    except HelmInstallError:
+    except (ClusterUnavailableError, HelmInstallError, StorageError):
         logger.exception("Jupyter restart failed for service %s", instance.id)
         instance.status = ServiceInstance.Status.STOPPED
         instance.save(update_fields=("status", "updated_at"))

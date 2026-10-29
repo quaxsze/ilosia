@@ -9,6 +9,7 @@ from infrastructure.exceptions import (
     HelmInstallError,
     HelmUninstallError,
     ServiceQuotaExceeded,
+    StorageError,
 )
 
 from .forms import LaunchServiceForm
@@ -161,7 +162,7 @@ def service_restart(request, service_id):
     except ValueError as error:
         messages.error(request, str(error))
         return redirect("workloads:detail", service_id=service.id)
-    except HelmInstallError:
+    except (ClusterUnavailableError, HelmInstallError, StorageError):
         messages.error(request, "The service could not be restarted.")
         return redirect("workloads:detail", service_id=service.id)
 

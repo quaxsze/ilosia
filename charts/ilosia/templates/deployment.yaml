@@ -60,6 +60,11 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.existingSecret }}
                   key: S3_SECRET_KEY
+            - name: GARAGE_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: GARAGE_ADMIN_TOKEN
             - name: OIDC_RP_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:

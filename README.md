@@ -166,11 +166,14 @@ les secrets, Django ne conserve que le nom : la valeur est envoyée directement 
 un Secret Kubernetes externe à Helm, injectée avec `secretKeyRef`, masquée dans
 l'interface, conservée pendant un arrêt et supprimée avec les données du service.
 
-La couche S3 compatible fournit un bucket `user-<id>` par utilisateur, la page
-`/storage/`, des téléchargements par URL présignée et la suppression d'objets.
+La couche S3 compatible fournit un bucket et une clé Garage limités à
+`user-<id>` par utilisateur, la page `/storage/`, des téléchargements par URL
+présignée et la suppression d'objets.
 Garage tourne en mono-nœud local avec un PVC et expose son API S3 sur
-<http://garage.localhost:8080/>. Ses clés sont lues depuis
-`ilosia-secrets`, jamais depuis les values Helm.
+<http://garage.localhost:8080/>. La clé plateforme et le token administrateur
+sont lus depuis `ilosia-secrets`, jamais depuis les values Helm. Garage crée une
+clé par utilisateur, ensuite copiée uniquement dans les Secrets Kubernetes de
+ses services.
 
 Avec deux Jupyter actifs pour le même utilisateur, vérifier automatiquement le
 partage S3 et l'isolation de leurs PVC :
@@ -181,6 +184,13 @@ partage S3 et l'isolation de leurs PVC :
 
 Le script installe temporairement `boto3` dans les Pods si nécessaire, utilise
 des fichiers de test uniques, puis les supprime.
+
+Avec au moins un Jupyter actif pour un second utilisateur, vérifier en plus que
+sa clé ne peut pas accéder au bucket du premier :
+
+```bash
+./scripts/check_jupyter_storage.sh user-1 user-2
+```
 
 Le lancement est synchrone pendant ce milestone. Une file de tâches sera ajoutée
 uniquement si les opérations deviennent trop longues pour les workers web.

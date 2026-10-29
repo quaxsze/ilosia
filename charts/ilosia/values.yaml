@@ -37,6 +37,7 @@ workloads:
 
 storage:
   endpointUrl: http://garage.ilosia.svc.cluster.local:3900
+  adminEndpointUrl: http://garage.ilosia.svc.cluster.local:3903
   publicEndpointUrl: http://garage.localhost
   browserEndpointUrl: http://garage.localhost:8080
   region: garage

@@ -1,4 +1,7 @@
-from urllib.parse import urlsplit, urlunsplit
+import json
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode, urlsplit, urlunsplit
+from urllib.request import Request, urlopen
 
 import boto3
 from botocore.client import Config
@@ -10,6 +13,77 @@ from .exceptions import StorageError
 
 def user_bucket(user):
     return f"user-{user.pk}"
+
+
+class GarageAdminClient:
+    def __init__(self, endpoint_url=None, token=None):
+        self.endpoint_url = (endpoint_url or settings.GARAGE_ADMIN_ENDPOINT_URL).rstrip(
+            "/"
+        )
+        self.token = token or settings.GARAGE_ADMIN_TOKEN
+
+    def ensure_bucket_access(self, *, bucket, key_name):
+        key = self._request(
+            "GetKeyInfo",
+            query={"search": key_name, "showSecretKey": "true"},
+            ignored_statuses={404},
+        )
+        if key is None:
+            key = self._request("CreateKey", method="POST", payload={"name": key_name})
+        if not isinstance(key, dict) or key.get("name") != key_name:
+            raise StorageError("Garage returned an unexpected access key")
+
+        bucket_info = self._request("GetBucketInfo", query={"globalAlias": bucket})
+        bucket_id = bucket_info.get("id") if isinstance(bucket_info, dict) else None
+        access_key = key.get("accessKeyId")
+        secret_key = key.get("secretAccessKey")
+        if not all((bucket_id, access_key, secret_key)):
+            raise StorageError("Garage returned incomplete access credentials")
+        self._request(
+            "AllowBucketKey",
+            method="POST",
+            payload={
+                "bucketId": bucket_id,
+                "accessKeyId": access_key,
+                "permissions": {"read": True, "write": True, "owner": False},
+            },
+        )
+        return access_key, secret_key
+
+    def _request(
+        self,
+        operation,
+        *,
+        method="GET",
+        query=None,
+        payload=None,
+        ignored_statuses=frozenset(),
+    ):
+        if not self.endpoint_url or not self.token:
+            raise StorageError("Garage administration is not configured")
+        url = f"{self.endpoint_url}/v2/{operation}"
+        if query:
+            url = f"{url}?{urlencode(query)}"
+        headers = {"Authorization": f"Bearer {self.token}"}
+        data = None
+        if payload is not None:
+            headers["Content-Type"] = "application/json"
+            data = json.dumps(payload).encode()
+        try:
+            with urlopen(
+                Request(url, data=data, headers=headers, method=method), timeout=5
+            ) as response:
+                return json.loads(response.read())
+        except HTTPError as error:
+            if error.code in ignored_statuses:
+                return None
+            raise StorageError(
+                f"Garage administration failed for {operation} ({error.code})"
+            ) from error
+        except (json.JSONDecodeError, OSError, URLError) as error:
+            raise StorageError(
+                f"Garage administration failed for {operation}"
+            ) from error
 
 
 class StorageClient:

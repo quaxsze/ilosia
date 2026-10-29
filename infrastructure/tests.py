@@ -8,7 +8,7 @@ from django.test import SimpleTestCase, override_settings
 from .exceptions import HelmInstallError, HelmUninstallError
 from .helm_client import HelmClient
 from .kubernetes_client import KubernetesClient
-from .storage_client import StorageClient, user_bucket
+from .storage_client import GarageAdminClient, StorageClient, user_bucket
 
 
 class HelmClientTests(SimpleTestCase):
@@ -174,6 +174,25 @@ class KubernetesClientTests(SimpleTestCase):
         self.assertEqual(request.call_args.kwargs["method"], "DELETE")
         self.assertEqual(request.call_args.kwargs["ignored_statuses"], {404})
 
+    def test_secret_patch_preserves_other_values(self):
+        client = KubernetesClient()
+        with patch.object(client, "_request") as request:
+            client.patch_secret(
+                namespace="user-1",
+                name="jupyter-abc-environment",
+                string_data={"S3_ACCESS_KEY": "user-access"},
+            )
+
+        self.assertEqual(request.call_args.kwargs["method"], "PATCH")
+        self.assertEqual(
+            request.call_args.kwargs["content_type"],
+            "application/merge-patch+json",
+        )
+        self.assertEqual(
+            request.call_args.kwargs["payload"]["stringData"],
+            {"S3_ACCESS_KEY": "user-access"},
+        )
+
     def test_pvc_deletion_is_idempotent(self):
         client = KubernetesClient()
         with patch.object(client, "_request") as request:
@@ -231,4 +250,52 @@ class StorageClientTests(SimpleTestCase):
         self.assertEqual(
             url,
             "http://garage.localhost:8080/user-1/data.csv?signature=abc",
+        )
+
+
+class GarageAdminClientTests(SimpleTestCase):
+    def test_existing_user_key_gets_only_read_write_bucket_access(self):
+        admin = GarageAdminClient("http://garage:3903", "admin-token")
+        key = {
+            "name": "ilosia-user-1",
+            "accessKeyId": "user-access",
+            "secretAccessKey": "user-secret",
+        }
+        with patch.object(
+            admin,
+            "_request",
+            side_effect=[key, {"id": "bucket-id"}, {}],
+        ) as request:
+            credentials = admin.ensure_bucket_access(
+                bucket="user-1", key_name="ilosia-user-1"
+            )
+
+        self.assertEqual(credentials, ("user-access", "user-secret"))
+        self.assertEqual(
+            request.call_args_list[2].kwargs["payload"],
+            {
+                "bucketId": "bucket-id",
+                "accessKeyId": "user-access",
+                "permissions": {"read": True, "write": True, "owner": False},
+            },
+        )
+
+    def test_missing_user_key_is_created(self):
+        admin = GarageAdminClient("http://garage:3903", "admin-token")
+        created = {
+            "name": "ilosia-user-2",
+            "accessKeyId": "other-access",
+            "secretAccessKey": "other-secret",
+        }
+        with patch.object(
+            admin,
+            "_request",
+            side_effect=[None, created, {"id": "bucket-id"}, {}],
+        ) as request:
+            admin.ensure_bucket_access(bucket="user-2", key_name="ilosia-user-2")
+
+        self.assertEqual(request.call_args_list[1].args, ("CreateKey",))
+        self.assertEqual(
+            request.call_args_list[1].kwargs,
+            {"method": "POST", "payload": {"name": "ilosia-user-2"}},
         )

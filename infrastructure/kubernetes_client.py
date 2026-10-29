@@ -123,6 +123,15 @@ class KubernetesClient:
             },
         )
 
+    def patch_secret(self, *, namespace, name, string_data):
+        self._request(
+            f"/api/v1/namespaces/{quote(namespace, safe='')}/secrets/"
+            f"{quote(name, safe='')}",
+            method="PATCH",
+            payload={"stringData": string_data},
+            content_type="application/merge-patch+json",
+        )
+
     def delete_secret(self, *, namespace, name):
         self._request(
             f"/api/v1/namespaces/{quote(namespace, safe='')}/secrets/"
@@ -140,7 +149,13 @@ class KubernetesClient:
         )
 
     def _request(
-        self, path, *, method="GET", payload=None, ignored_statuses=frozenset()
+        self,
+        path,
+        *,
+        method="GET",
+        payload=None,
+        ignored_statuses=frozenset(),
+        content_type="application/json",
     ):
         try:
             token = (SERVICE_ACCOUNT_PATH / "token").read_text().strip()
@@ -148,7 +163,7 @@ class KubernetesClient:
             headers = {"Authorization": f"Bearer {token}"}
             data = None
             if payload is not None:
-                headers["Content-Type"] = "application/json"
+                headers["Content-Type"] = content_type
                 data = json.dumps(payload).encode()
             request = Request(
                 f"{self.base_url}{path}",

@@ -2,6 +2,7 @@
 set -eu
 
 namespace="${1:-user-1}"
+other_namespace="${2:-}"
 pods=$(kubectl get pods \
   --namespace "$namespace" \
   --selector app.kubernetes.io/name=jupyter \
@@ -150,3 +151,49 @@ PY
 
 echo "PASS: $pod_a and $pod_b use distinct PVCs ($pvc_a, $pvc_b)."
 echo "PASS: both services share the S3 bucket $bucket_a."
+
+if [ -n "$other_namespace" ]; then
+  other_pod=$(kubectl get pods \
+    --namespace "$other_namespace" \
+    --selector app.kubernetes.io/name=jupyter \
+    --field-selector status.phase=Running \
+    --output jsonpath='{.items[0].metadata.name}')
+  if [ -z "$other_pod" ]; then
+    echo "Launch one running Jupyter service in $other_namespace, then retry." >&2
+    exit 1
+  fi
+  kubectl wait --namespace "$other_namespace" --for=condition=Ready \
+    "pod/$other_pod" --timeout=60s >/dev/null
+  if ! kubectl exec --namespace "$other_namespace" "$other_pod" -- \
+    python -c 'import boto3' >/dev/null 2>&1; then
+    echo "Installing boto3 temporarily in $other_pod..."
+    kubectl exec --namespace "$other_namespace" "$other_pod" -- \
+      python -m pip install --quiet --user boto3
+  fi
+  kubectl exec --stdin --namespace "$other_namespace" "$other_pod" -- \
+    env TARGET_BUCKET="$bucket_a" python - <<'PY'
+import os
+
+import boto3
+from botocore.config import Config
+from botocore.exceptions import ClientError
+
+s3 = boto3.client(
+    "s3",
+    endpoint_url=os.environ["S3_ENDPOINT"],
+    aws_access_key_id=os.environ["S3_ACCESS_KEY"],
+    aws_secret_access_key=os.environ["S3_SECRET_KEY"],
+    region_name="garage",
+    config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
+)
+try:
+    s3.head_bucket(Bucket=os.environ["TARGET_BUCKET"])
+except ClientError as error:
+    code = str(error.response.get("Error", {}).get("Code"))
+    if code in {"403", "404", "AccessDenied", "NoSuchBucket"}:
+        raise SystemExit(0)
+    raise
+raise SystemExit("S3 isolation failed: another user can access the target bucket")
+PY
+  echo "PASS: $other_namespace cannot access the S3 bucket $bucket_a."
+fi

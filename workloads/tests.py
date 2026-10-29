@@ -61,11 +61,20 @@ class WorkloadViewTests(TestCase):
         S3_SECRET_KEY="secret",
     )
     @patch("workloads.services.StorageClient")
+    @patch("workloads.services.GarageAdminClient")
     @patch("workloads.services.KubernetesClient")
     @patch("workloads.services.HelmClient")
     def test_valid_launch_installs_jupyter(
-        self, helm_client_class, kubernetes_client_class, storage_client_class
+        self,
+        helm_client_class,
+        kubernetes_client_class,
+        garage_admin_class,
+        storage_client_class,
     ):
+        garage_admin_class.return_value.ensure_bucket_access.return_value = (
+            "user-access",
+            "user-secret",
+        )
         response = self.client.post(
             reverse("workloads:launch", kwargs={"slug": "jupyter"}),
             {
@@ -115,6 +124,9 @@ class WorkloadViewTests(TestCase):
         self.assertEqual(
             secret_call["string_data"]["S3_BUCKET"], f"user-{self.user.pk}"
         )
+        self.assertEqual(secret_call["string_data"]["S3_ACCESS_KEY"], "user-access")
+        self.assertEqual(secret_call["string_data"]["S3_SECRET_KEY"], "user-secret")
+        self.assertNotEqual(secret_call["string_data"]["S3_ACCESS_KEY"], "access")
         self.assertIn("JUPYTER_TOKEN", secret_call["string_data"])
 
         install_call = helm_client_class.return_value.install.call_args.kwargs
@@ -394,8 +406,21 @@ class WorkloadViewTests(TestCase):
         self.assertEqual(service.status, ServiceInstance.Status.UNKNOWN)
 
     @override_settings(S3_ENDPOINT_URL="http://s3:9000")
+    @patch("workloads.services.StorageClient")
+    @patch("workloads.services.GarageAdminClient")
+    @patch("workloads.services.KubernetesClient")
     @patch("workloads.services.HelmClient")
-    def test_restart_reuses_release_pvc_and_environment(self, helm_client_class):
+    def test_restart_reuses_release_pvc_and_environment(
+        self,
+        helm_client_class,
+        kubernetes_client_class,
+        garage_admin_class,
+        storage_client_class,
+    ):
+        garage_admin_class.return_value.ensure_bucket_access.return_value = (
+            "user-access",
+            "user-secret",
+        )
         service = self.instance_for(self.user, "Alice notebook")
         service.status = ServiceInstance.Status.STOPPED
         service.save(update_fields=("status", "updated_at"))
@@ -425,6 +450,16 @@ class WorkloadViewTests(TestCase):
         self.assertEqual(install["values"]["environment"], {"MODE": "development"})
         self.assertIn("API_KEY", install["values"]["secretEnvironment"])
         self.assertIn("S3_BUCKET", install["values"]["secretEnvironment"])
+        kubernetes_client_class.return_value.patch_secret.assert_called_once_with(
+            namespace=service.namespace,
+            name=f"{service.release_name}-environment",
+            string_data={
+                "S3_ENDPOINT": "http://s3:9000",
+                "S3_BUCKET": f"user-{self.user.pk}",
+                "S3_ACCESS_KEY": "user-access",
+                "S3_SECRET_KEY": "user-secret",
+            },
+        )
 
     @patch("workloads.services.HelmClient")
     def test_failed_restart_remains_stopped(self, helm_client_class):

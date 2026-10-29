@@ -24,6 +24,7 @@ data:
   S3_PUBLIC_ENDPOINT_URL: {{ .Values.storage.publicEndpointUrl | quote }}
   S3_BROWSER_ENDPOINT_URL: {{ .Values.storage.browserEndpointUrl | quote }}
   S3_REGION: {{ .Values.storage.region | quote }}
+  GARAGE_ADMIN_ENDPOINT_URL: {{ .Values.storage.adminEndpointUrl | quote }}
   OIDC_ENABLED: {{ .Values.authentication.oidc.enabled | quote }}
   OIDC_REALM: {{ .Values.authentication.oidc.realm | quote }}
   OIDC_RP_CLIENT_ID: {{ .Values.authentication.oidc.clientId | quote }}
