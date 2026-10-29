@@ -297,7 +297,9 @@ def restart_service(instance):
 
     variables = instance.environment_variables.all()
     environment = {
-        variable.name: variable.value for variable in variables if not variable.is_secret
+        variable.name: variable.value
+        for variable in variables
+        if not variable.is_secret
     }
     secret_names = {variable.name for variable in variables if variable.is_secret}
     if settings.S3_ENDPOINT_URL:
