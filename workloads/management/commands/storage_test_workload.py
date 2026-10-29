@@ -81,11 +81,11 @@ class Command(BaseCommand):
                 lambda instance=instance: delete_service_and_data(instance),
             )
         garage = GarageAdminClient()
-        attempt("bucket", lambda: garage.delete_bucket(bucket))
         attempt(
             "access key",
             lambda: garage.delete_key(f"ilosia-user-{user.pk}"),
         )
+        attempt("bucket", lambda: garage.delete_bucket(bucket))
         user.delete()
         if failures:
             raise CommandError("Cleanup incomplete: " + "; ".join(failures))

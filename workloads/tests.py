@@ -1,7 +1,7 @@
 import uuid
 from io import StringIO
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -686,11 +686,18 @@ class StorageTestWorkloadCommandTests(TestCase):
         call_command("storage_test_workload", "cleanup", user_id=str(user.pk))
 
         self.assertEqual(delete_service.call_count, 2)
+        garage_admin.return_value.delete_key.assert_called_once_with(
+            f"ilosia-user-{user.pk}"
+        )
         garage_admin.return_value.delete_bucket.assert_called_once_with(
             f"user-{user.pk}"
         )
-        garage_admin.return_value.delete_key.assert_called_once_with(
-            f"ilosia-user-{user.pk}"
+        self.assertEqual(
+            garage_admin.return_value.mock_calls,
+            [
+                call.delete_key(f"ilosia-user-{user.pk}"),
+                call.delete_bucket(f"user-{user.pk}"),
+            ],
         )
         self.assertFalse(get_user_model().objects.filter(pk=user.pk).exists())
 
