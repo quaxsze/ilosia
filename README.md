@@ -192,11 +192,13 @@ sa clé ne peut pas accéder au bucket du premier :
 ./scripts/check_jupyter_storage.sh user-1 user-2
 ```
 
-Ou laisser le script créer un utilisateur Django non connectable et un Jupyter
-temporaires, puis nettoyer automatiquement leurs ressources :
+Le mode E2E ne dépend d'aucun utilisateur existant : il crée deux utilisateurs
+Django non connectables, deux Jupyter pour le premier et un pour le second. Il
+teste les PVC, le partage S3, l'isolation S3 dans les deux sens, puis supprime
+les services, volumes, Secrets, buckets, clés, namespaces et utilisateurs :
 
 ```bash
-./scripts/check_jupyter_storage.sh user-1 --with-temporary-user
+./scripts/check_jupyter_storage.sh --e2e
 ```
 
 Le lancement est synchrone pendant ce milestone. Une file de tâches sera ajoutée

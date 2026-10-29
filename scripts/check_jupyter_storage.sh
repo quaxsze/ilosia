@@ -1,14 +1,100 @@
 #!/bin/sh
 set -eu
 
+e2e_mode=false
 namespace="${1:-user-1}"
 other_namespace="${2:-}"
-temporary_mode=false
-temporary_service_id=""
-if [ "$other_namespace" = "--with-temporary-user" ]; then
-  temporary_mode=true
+temporary_user_a=""
+temporary_user_b=""
+temporary_namespace_a=""
+temporary_namespace_b=""
+pod_a=""
+key=""
+local_file=""
+
+if [ "$namespace" = "--e2e" ] || [ "$other_namespace" = "--with-temporary-user" ]; then
+  e2e_mode=true
+  namespace=""
   other_namespace=""
 fi
+
+cleanup() {
+  if [ -n "$pod_a" ] && [ -n "$local_file" ]; then
+    kubectl exec --namespace "$namespace" "$pod_a" -- rm -f "$local_file" \
+      >/dev/null 2>&1 || true
+  fi
+  if [ -n "$pod_a" ] && [ -n "$key" ]; then
+    kubectl exec --stdin --namespace "$namespace" "$pod_a" -- \
+      env CHECK_KEY="$key" python - >/dev/null 2>&1 <<'PY' || true
+import os
+import boto3
+from botocore.config import Config
+
+s3 = boto3.client(
+    "s3",
+    endpoint_url=os.environ["S3_ENDPOINT"],
+    aws_access_key_id=os.environ["S3_ACCESS_KEY"],
+    aws_secret_access_key=os.environ["S3_SECRET_KEY"],
+    region_name="garage",
+    config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
+)
+s3.delete_object(Bucket=os.environ["S3_BUCKET"], Key=os.environ["CHECK_KEY"])
+PY
+  fi
+  for temporary_user in "$temporary_user_b" "$temporary_user_a"; do
+    if [ -n "$temporary_user" ]; then
+      echo "Cleaning up temporary user $temporary_user..."
+      kubectl exec --namespace ilosia deployment/ilosia-web -- \
+        python manage.py storage_test_workload cleanup \
+        --user-id "$temporary_user" || \
+        echo "WARNING: application cleanup was incomplete for user $temporary_user." >&2
+    fi
+  done
+  for temporary_namespace in "$temporary_namespace_b" "$temporary_namespace_a"; do
+    if [ -n "$temporary_namespace" ]; then
+      kubectl delete namespace "$temporary_namespace" --wait=false \
+        >/dev/null 2>&1 || true
+    fi
+  done
+  temporary_user_a=""
+  temporary_user_b=""
+}
+trap cleanup EXIT INT TERM
+
+if [ "$e2e_mode" = true ]; then
+  echo "Creating temporary user A with two Jupyter services..."
+  temporary_result=$(kubectl exec --namespace ilosia deployment/ilosia-web -- \
+    python manage.py storage_test_workload create --services 2)
+  set -- $temporary_result
+  if [ "$#" -ne 3 ]; then
+    echo "Unexpected temporary user response: $temporary_result" >&2
+    exit 1
+  fi
+  temporary_namespace_a=$1
+  temporary_user_a=$2
+  if [ "$3" != "RUNNING" ]; then
+    echo "Temporary user A launch failed with status $3." >&2
+    exit 1
+  fi
+
+  echo "Creating temporary user B with one Jupyter service..."
+  temporary_result=$(kubectl exec --namespace ilosia deployment/ilosia-web -- \
+    python manage.py storage_test_workload create --services 1)
+  set -- $temporary_result
+  if [ "$#" -ne 3 ]; then
+    echo "Unexpected temporary user response: $temporary_result" >&2
+    exit 1
+  fi
+  temporary_namespace_b=$1
+  temporary_user_b=$2
+  if [ "$3" != "RUNNING" ]; then
+    echo "Temporary user B launch failed with status $3." >&2
+    exit 1
+  fi
+  namespace=$temporary_namespace_a
+  other_namespace=$temporary_namespace_b
+fi
+
 pods=$(kubectl get pods \
   --namespace "$namespace" \
   --selector app.kubernetes.io/name=jupyter \
@@ -80,56 +166,6 @@ pvc_b=$(kubectl get pod --namespace "$namespace" "$pod_b" \
 if [ -z "$pvc_a" ] || [ -z "$pvc_b" ] || [ "$pvc_a" = "$pvc_b" ]; then
   echo "The two Jupyter services must use distinct PVCs." >&2
   exit 1
-fi
-
-cleanup() {
-  kubectl exec --namespace "$namespace" "$pod_a" -- rm -f "$local_file" \
-    >/dev/null 2>&1 || true
-  kubectl exec --stdin --namespace "$namespace" "$pod_a" -- \
-    env CHECK_KEY="$key" python - >/dev/null 2>&1 <<'PY' || true
-import os
-import boto3
-from botocore.config import Config
-
-s3 = boto3.client(
-    "s3",
-    endpoint_url=os.environ["S3_ENDPOINT"],
-    aws_access_key_id=os.environ["S3_ACCESS_KEY"],
-    aws_secret_access_key=os.environ["S3_SECRET_KEY"],
-    region_name="garage",
-    config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
-)
-s3.delete_object(Bucket=os.environ["S3_BUCKET"], Key=os.environ["CHECK_KEY"])
-PY
-  if [ -n "$temporary_service_id" ]; then
-    echo "Cleaning up temporary service $temporary_service_id..."
-    if ! kubectl exec --namespace ilosia deployment/ilosia-web -- \
-      python manage.py storage_test_workload cleanup \
-      --service-id "$temporary_service_id"; then
-      echo "WARNING: application cleanup was incomplete." >&2
-    fi
-    kubectl delete namespace "$other_namespace" --wait=false >/dev/null 2>&1 || true
-    temporary_service_id=""
-  fi
-}
-trap cleanup EXIT INT TERM
-
-if [ "$temporary_mode" = true ]; then
-  echo "Creating a temporary user and Jupyter service..."
-  temporary_result=$(kubectl exec --namespace ilosia deployment/ilosia-web -- \
-    python manage.py storage_test_workload create)
-  set -- $temporary_result
-  if [ "$#" -ne 3 ]; then
-    echo "Unexpected temporary service response: $temporary_result" >&2
-    exit 1
-  fi
-  other_namespace=$1
-  temporary_service_id=$2
-  if [ "$3" != "RUNNING" ]; then
-    echo "Temporary Jupyter launch failed with status $3." >&2
-    exit 1
-  fi
-  echo "Temporary Jupyter $temporary_service_id is running in $other_namespace."
 fi
 
 kubectl exec --stdin --namespace "$namespace" "$pod_a" -- \

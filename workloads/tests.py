@@ -629,29 +629,35 @@ class PodStatusTests(TestCase):
 class StorageTestWorkloadCommandTests(TestCase):
     @patch("workloads.management.commands.storage_test_workload.launch_service")
     def test_create_uses_an_unusable_temporary_user(self, launch_service):
-        service_id = uuid.uuid4()
-
         def launch(*, user, **kwargs):
             return SimpleNamespace(
                 namespace=f"user-{user.pk}",
-                id=service_id,
+                id=uuid.uuid4(),
                 status=ServiceInstance.Status.RUNNING,
             )
 
         launch_service.side_effect = launch
         output = StringIO()
 
-        call_command("storage_test_workload", "create", stdout=output)
+        call_command("storage_test_workload", "create", services=2, stdout=output)
 
         user = get_user_model().objects.get(username__startswith="ilosia-storage-test-")
         self.assertFalse(user.has_usable_password())
         self.assertEqual(
             output.getvalue().strip(),
-            f"user-{user.pk} {service_id} {ServiceInstance.Status.RUNNING}",
+            f"user-{user.pk} {user.pk} {ServiceInstance.Status.RUNNING}",
         )
-        data = launch_service.call_args.kwargs["data"]
-        self.assertEqual(data["display_name"], "Storage isolation check")
-        self.assertEqual(data["environment_variables"], {})
+        self.assertEqual(launch_service.call_count, 2)
+        self.assertEqual(
+            [
+                call.kwargs["data"]["display_name"]
+                for call in launch_service.call_args_list
+            ],
+            ["Storage isolation check 1", "Storage isolation check 2"],
+        )
+        self.assertEqual(
+            launch_service.call_args.kwargs["data"]["environment_variables"], {}
+        )
 
     @patch("workloads.management.commands.storage_test_workload.GarageAdminClient")
     @patch("workloads.management.commands.storage_test_workload.StorageClient")
@@ -664,21 +670,23 @@ class StorageTestWorkloadCommandTests(TestCase):
         user = get_user_model().objects.create_user(
             username="ilosia-storage-test-cleanup", password=None
         )
-        service = ServiceInstance.objects.create(
-            user=user,
-            service_definition=ServiceDefinition.objects.get(slug="jupyter"),
-            display_name="Storage isolation check",
-            status=ServiceInstance.Status.RUNNING,
-            cpu_units=1,
-            memory_mib=2048,
-            storage_mib=5120,
-            release_name=f"jupyter-{uuid.uuid4().hex}",
-            namespace=f"user-{user.pk}",
-        )
+        definition = ServiceDefinition.objects.get(slug="jupyter")
+        for number in (1, 2):
+            ServiceInstance.objects.create(
+                user=user,
+                service_definition=definition,
+                display_name=f"Storage isolation check {number}",
+                status=ServiceInstance.Status.RUNNING,
+                cpu_units=1,
+                memory_mib=2048,
+                storage_mib=5120,
+                release_name=f"jupyter-{uuid.uuid4().hex}",
+                namespace=f"user-{user.pk}",
+            )
 
-        call_command("storage_test_workload", "cleanup", service_id=str(service.id))
+        call_command("storage_test_workload", "cleanup", user_id=str(user.pk))
 
-        delete_service.assert_called_once()
+        self.assertEqual(delete_service.call_count, 2)
         storage_client.return_value.delete_bucket.assert_called_once_with(
             f"user-{user.pk}"
         )
@@ -689,15 +697,6 @@ class StorageTestWorkloadCommandTests(TestCase):
 
     def test_cleanup_refuses_a_real_user(self):
         user = get_user_model().objects.create_user(username="alice", password=None)
-        service = ServiceInstance.objects.create(
-            user=user,
-            service_definition=ServiceDefinition.objects.get(slug="jupyter"),
-            display_name="Real notebook",
-            status=ServiceInstance.Status.RUNNING,
-            cpu_units=1,
-            memory_mib=2048,
-            storage_mib=5120,
-        )
 
         with self.assertRaisesMessage(CommandError, "non-test user"):
-            call_command("storage_test_workload", "cleanup", service_id=str(service.id))
+            call_command("storage_test_workload", "cleanup", user_id=str(user.pk))
