@@ -272,10 +272,24 @@ class GarageAdminClientTests(SimpleTestCase):
         with patch.object(
             admin,
             "_request",
-            side_effect=[key, {"id": "bucket-id"}, {}],
+            side_effect=[
+                key,
+                {
+                    "buckets": [
+                        {
+                            "id": "bucket-id",
+                            "globalAliases": ["user-1"],
+                            "localAliases": [],
+                        }
+                    ]
+                },
+                {},
+            ],
         ) as request:
             credentials = admin.ensure_bucket_access(
-                bucket="user-1", key_name="ilosia-user-1"
+                bucket="user-1",
+                key_name="ilosia-user-1",
+                owner_access_key="platform-access",
             )
 
         self.assertEqual(credentials, ("user-access", "user-secret"))
@@ -298,14 +312,37 @@ class GarageAdminClientTests(SimpleTestCase):
         with patch.object(
             admin,
             "_request",
-            side_effect=[None, created, {"id": "bucket-id"}, {}],
+            side_effect=[
+                None,
+                created,
+                {
+                    "buckets": [
+                        {
+                            "id": "bucket-id",
+                            "globalAliases": [],
+                            "localAliases": ["user-2"],
+                        }
+                    ]
+                },
+                {},
+                {},
+            ],
         ) as request:
-            admin.ensure_bucket_access(bucket="user-2", key_name="ilosia-user-2")
+            admin.ensure_bucket_access(
+                bucket="user-2",
+                key_name="ilosia-user-2",
+                owner_access_key="platform-access",
+            )
 
         self.assertEqual(request.call_args_list[1].args, ("CreateKey",))
         self.assertEqual(
             request.call_args_list[1].kwargs,
             {"method": "POST", "payload": {"name": "ilosia-user-2"}},
+        )
+        self.assertEqual(request.call_args_list[3].args, ("AddBucketAlias",))
+        self.assertEqual(
+            request.call_args_list[3].kwargs["payload"],
+            {"bucketId": "bucket-id", "globalAlias": "user-2"},
         )
 
     def test_user_key_deletion_is_idempotent(self):

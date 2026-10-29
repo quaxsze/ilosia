@@ -22,7 +22,7 @@ class GarageAdminClient:
         )
         self.token = token or settings.GARAGE_ADMIN_TOKEN
 
-    def ensure_bucket_access(self, *, bucket, key_name):
+    def ensure_bucket_access(self, *, bucket, key_name, owner_access_key):
         key = self._request(
             "GetKeyInfo",
             query={"search": key_name, "showSecretKey": "true"},
@@ -33,12 +33,28 @@ class GarageAdminClient:
         if not isinstance(key, dict) or key.get("name") != key_name:
             raise StorageError("Garage returned an unexpected access key")
 
-        bucket_info = self._request("GetBucketInfo", query={"globalAlias": bucket})
-        bucket_id = bucket_info.get("id") if isinstance(bucket_info, dict) else None
+        owner = self._request("GetKeyInfo", query={"id": owner_access_key})
+        buckets = owner.get("buckets", []) if isinstance(owner, dict) else []
+        bucket_info = next(
+            (
+                item
+                for item in buckets
+                if bucket
+                in item.get("globalAliases", []) + item.get("localAliases", [])
+            ),
+            None,
+        )
+        bucket_id = bucket_info.get("id") if bucket_info else None
         access_key = key.get("accessKeyId")
         secret_key = key.get("secretAccessKey")
         if not all((bucket_id, access_key, secret_key)):
             raise StorageError("Garage returned incomplete access credentials")
+        if bucket not in bucket_info.get("globalAliases", []):
+            self._request(
+                "AddBucketAlias",
+                method="POST",
+                payload={"bucketId": bucket_id, "globalAlias": bucket},
+            )
         self._request(
             "AllowBucketKey",
             method="POST",

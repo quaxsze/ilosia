@@ -85,6 +85,7 @@ def _workload_s3_environment(user):
         access_key, secret_key = GarageAdminClient().ensure_bucket_access(
             bucket=bucket,
             key_name=f"ilosia-user-{user.pk}",
+            owner_access_key=settings.S3_ACCESS_KEY,
         )
     return {
         "S3_ENDPOINT": settings.S3_ENDPOINT_URL,
@@ -150,11 +151,11 @@ def launch_service(*, user, definition, data):
     secret_created = False
     service_launch_total.inc()
     try:
-        s3_environment = _workload_s3_environment(user)
         kubernetes.ensure_namespace(
             instance.namespace,
             quota=settings.USER_NAMESPACE_QUOTA,
         )
+        s3_environment = _workload_s3_environment(user)
         kubernetes.create_secret(
             namespace=instance.namespace,
             name=f"{instance.release_name}-environment",

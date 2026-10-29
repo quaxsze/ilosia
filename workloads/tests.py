@@ -76,6 +76,13 @@ class WorkloadViewTests(TestCase):
         garage_admin_class,
         storage_client_class,
     ):
+        events = []
+        kubernetes_client_class.return_value.ensure_namespace.side_effect = (
+            lambda *args, **kwargs: events.append("namespace")
+        )
+        storage_client_class.return_value.ensure_bucket.side_effect = (
+            lambda *args, **kwargs: events.append("storage")
+        )
         garage_admin_class.return_value.ensure_bucket_access.return_value = (
             "user-access",
             "user-secret",
@@ -113,6 +120,12 @@ class WorkloadViewTests(TestCase):
         storage_client_class.return_value.ensure_bucket.assert_called_once_with(
             f"user-{self.user.pk}"
         )
+        garage_admin_class.return_value.ensure_bucket_access.assert_called_once_with(
+            bucket=f"user-{self.user.pk}",
+            key_name=f"ilosia-user-{self.user.pk}",
+            owner_access_key="access",
+        )
+        self.assertEqual(events, ["namespace", "storage"])
         kubernetes.ensure_namespace.assert_called_once_with(
             instance.namespace,
             quota={

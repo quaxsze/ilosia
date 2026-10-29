@@ -186,27 +186,12 @@ PY
 echo "PASS: $pod_a and $pod_b use distinct PVCs ($pvc_a, $pvc_b)."
 echo "PASS: both services share the S3 bucket $bucket_a."
 
-if [ -n "$other_namespace" ]; then
-  other_pods=$(kubectl get pods \
-    --namespace "$other_namespace" \
-    --selector app.kubernetes.io/name=jupyter \
-    --field-selector status.phase=Running \
-    --output jsonpath='{range .items[*]}{.metadata.name}{" "}{end}')
-  other_pod=${other_pods%% *}
-  if [ -z "$other_pod" ]; then
-    echo "Launch one running Jupyter service in $other_namespace, then retry." >&2
-    exit 1
-  fi
-  kubectl wait --namespace "$other_namespace" --for=condition=Ready \
-    "pod/$other_pod" --timeout=60s >/dev/null
-  if ! kubectl exec --namespace "$other_namespace" "$other_pod" -- \
-    python -c 'import boto3' >/dev/null 2>&1; then
-    echo "Installing boto3 temporarily in $other_pod..."
-    kubectl exec --namespace "$other_namespace" "$other_pod" -- \
-      python -m pip install --quiet --user boto3
-  fi
-  kubectl exec --stdin --namespace "$other_namespace" "$other_pod" -- \
-    env TARGET_BUCKET="$bucket_a" python - <<'PY'
+assert_bucket_denied() {
+  check_namespace=$1
+  check_pod=$2
+  target_bucket=$3
+  kubectl exec --stdin --namespace "$check_namespace" "$check_pod" -- \
+    env TARGET_BUCKET="$target_bucket" python - <<'PY'
 import os
 
 import boto3
@@ -228,7 +213,37 @@ except ClientError as error:
     if code in {"403", "404", "AccessDenied", "NoSuchBucket"}:
         raise SystemExit(0)
     raise
-raise SystemExit("S3 isolation failed: another user can access the target bucket")
+raise SystemExit("S3 isolation failed: this user can access another user's bucket")
 PY
+}
+
+if [ -n "$other_namespace" ]; then
+  other_pods=$(kubectl get pods \
+    --namespace "$other_namespace" \
+    --selector app.kubernetes.io/name=jupyter \
+    --field-selector status.phase=Running \
+    --output jsonpath='{range .items[*]}{.metadata.name}{" "}{end}')
+  other_pod=${other_pods%% *}
+  if [ -z "$other_pod" ]; then
+    echo "Launch one running Jupyter service in $other_namespace, then retry." >&2
+    exit 1
+  fi
+  kubectl wait --namespace "$other_namespace" --for=condition=Ready \
+    "pod/$other_pod" --timeout=60s >/dev/null
+  if ! kubectl exec --namespace "$other_namespace" "$other_pod" -- \
+    python -c 'import boto3' >/dev/null 2>&1; then
+    echo "Installing boto3 temporarily in $other_pod..."
+    kubectl exec --namespace "$other_namespace" "$other_pod" -- \
+      python -m pip install --quiet --user boto3
+  fi
+  other_bucket=$(kubectl exec --namespace "$other_namespace" "$other_pod" -- \
+    python -c 'import os; print(os.environ["S3_BUCKET"])')
+  if [ "$other_bucket" != "$other_namespace" ]; then
+    echo "Unexpected bucket: $other_pod=$other_bucket" >&2
+    exit 1
+  fi
+  assert_bucket_denied "$other_namespace" "$other_pod" "$bucket_a"
   echo "PASS: $other_namespace cannot access the S3 bucket $bucket_a."
+  assert_bucket_denied "$namespace" "$pod_a" "$other_bucket"
+  echo "PASS: $namespace cannot access the S3 bucket $other_bucket."
 fi
