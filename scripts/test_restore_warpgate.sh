@@ -40,6 +40,16 @@ case "$image" in
   ghcr.io/warp-tech/warpgate:*) ;;
   *) echo "Unexpected Warpgate image in backup: $image" >&2; exit 1 ;;
 esac
+python3 - "$tmp_dir/db.sqlite3" <<'PY'
+import sqlite3
+import sys
+
+connection = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True)
+result = connection.execute("PRAGMA integrity_check").fetchone()[0]
+connection.close()
+if result != "ok":
+    raise SystemExit(f"Backup database integrity check failed: {result}")
+PY
 
 kubectl create namespace "$namespace" --dry-run=client --output=yaml | \
   kubectl apply -f - >/dev/null
@@ -86,9 +96,20 @@ kubectl wait --namespace "$namespace" --for=condition=Ready \
   pod/warpgate-restore-loader --timeout=180s >/dev/null
 kubectl exec --stdin --namespace "$namespace" warpgate-restore-loader -- \
   tar -C /data -xzf - <"$tmp_dir/data.tar.gz"
-kubectl exec --namespace "$namespace" warpgate-restore-loader -- mkdir -p /data/db
-kubectl exec --stdin --namespace "$namespace" warpgate-restore-loader -- \
-  sh -c 'cat > /data/db/db.sqlite3' <"$tmp_dir/db.sqlite3"
+kubectl cp "$tmp_dir/db.sqlite3" \
+  "$namespace/warpgate-restore-loader:/tmp/db.sqlite3"
+kubectl exec --namespace "$namespace" warpgate-restore-loader -- \
+  sh -c 'mkdir -p /data/db; rm -f /data/db/db.sqlite3 /data/db/db.sqlite3-wal /data/db/db.sqlite3-shm; cp /tmp/db.sqlite3 /data/db/db.sqlite3; chmod 0600 /data/db/db.sqlite3; sync'
+kubectl exec --stdin --namespace "$namespace" warpgate-restore-loader -- python - <<'PY'
+import sqlite3
+
+connection = sqlite3.connect("file:/data/db/db.sqlite3?mode=ro", uri=True)
+result = connection.execute("PRAGMA integrity_check").fetchone()[0]
+connection.close()
+if result != "ok":
+    raise SystemExit(f"Restored database integrity check failed: {result}")
+print("SQLite restore integrity: ok")
+PY
 kubectl delete pod warpgate-restore-loader --namespace "$namespace" \
   --wait --timeout=120s >/dev/null
 

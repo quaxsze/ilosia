@@ -5,7 +5,7 @@ namespace=warpgate
 output_dir=${WARPGATE_BACKUP_DIR:-backups/warpgate}
 timestamp=$(date -u +%Y%m%dT%H%M%SZ)
 archive=${1:-$output_dir/warpgate-$timestamp.tar.gz}
-helper=warpgate-backup-$timestamp-$$
+helper=warpgate-backup-$(date -u +%Y%m%d-%H%M%S)-$$
 tmp_dir=$(mktemp -d)
 trap 'kubectl delete pod "$helper" --namespace "$namespace" --ignore-not-found >/dev/null 2>&1 || true; rm -rf "$tmp_dir"' EXIT INT TERM
 umask 077

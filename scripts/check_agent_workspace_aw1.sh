@@ -28,26 +28,38 @@ key_bytes=$(printf '%s' "$encryption_key" | openssl base64 -d -A | wc -c | tr -d
 }
 
 deployment=$(kubectl get deployment warpgate --namespace "$namespace" --output=json)
-printf '%s' "$deployment" | jq --exit-status '
+if ! printf '%s' "$deployment" | jq --exit-status '
   [.spec.template.spec.containers[].env[]?.valueFrom.secretKeyRef.name] |
   index("warpgate-secrets") != null
-' >/dev/null
-printf '%s' "$deployment" | jq --exit-status '
+' >/dev/null; then
+  echo "FAIL: Warpgate does not reference warpgate-secrets." >&2
+  exit 1
+fi
+if ! printf '%s' "$deployment" | jq --exit-status '
   [.spec.template.spec.containers[].env[]?.valueFrom.secretKeyRef.name] |
   index("warpgate-aw0") == null
-' >/dev/null
+' >/dev/null; then
+  echo "FAIL: Warpgate still references an AW0 Secret." >&2
+  exit 1
+fi
 kubectl rollout status deployment/warpgate --namespace "$namespace" --timeout=5m
 
-kubectl get ingress warpgate --namespace "$namespace" --output=json | \
+if ! kubectl get ingress warpgate --namespace "$namespace" --output=json | \
   jq --exit-status '
     .spec.ingressClassName == "nginx" and
     .spec.rules[0].host == "warpgate.localhost" and
     .spec.tls[0].secretName == "warpgate-tls"
-  ' >/dev/null
-kubectl get deployment keycloak --namespace ilosia --output=json | \
+  ' >/dev/null; then
+  echo "FAIL: Warpgate Ingress or TLS does not match the AW1 values." >&2
+  exit 1
+fi
+if ! kubectl get deployment keycloak --namespace ilosia --output=json | \
   jq --exit-status '
     [.spec.template.spec.containers[].env[]? | select(.name == "KC_TRUSTSTORE_PATHS")] | length == 1
-  ' >/dev/null
+  ' >/dev/null; then
+  echo "FAIL: Keycloak has not mounted the Warpgate CA yet." >&2
+  exit 1
+fi
 
 test -s "$ca_file" || {
   echo "FAIL: CA bundle not found at $ca_file." >&2
@@ -55,6 +67,7 @@ test -s "$ca_file" || {
 }
 ./scripts/start_agent_workspace_aw1_https_proxy.sh >/dev/null
 curl --fail --silent --show-error \
+  --connect-timeout 5 --max-time 20 \
   --cacert "$ca_file" \
   "https://warpgate.localhost:$public_port/@warpgate/" >/dev/null
 
