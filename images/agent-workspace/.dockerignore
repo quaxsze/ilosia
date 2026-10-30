@@ -1,0 +1,5 @@
+*
+!Dockerfile
+!entrypoint.sh
+!clone-repository.sh
+!sshd_config

@@ -49,6 +49,7 @@ jobs:
       - run: helm lint charts/ilosia
       - run: helm template ilosia charts/ilosia --values gitops/dev/values.yaml >/dev/null
       - run: helm lint charts/jupyter --set ingress.host=jupyter-test.localhost
+      - run: ./scripts/test_agent_workspace_chart.sh
       - run: >-
           helm template warpgate
           oci://ghcr.io/warp-tech/helm-charts/warpgate
@@ -57,4 +58,6 @@ jobs:
           --values gitops/dev/warpgate-values.yaml
           >/dev/null
       - run: docker build --tag ilosia:ci .
+      - run: docker build --tag ilosia-agent-workspace:ci images/agent-workspace
+      - run: ./scripts/test_agent_workspace_image.sh ilosia-agent-workspace:ci
 

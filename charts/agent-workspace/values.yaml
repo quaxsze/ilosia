@@ -1,0 +1,60 @@
+image:
+  repository: ilosia-agent-workspace
+  tag: dev
+  pullPolicy: Never
+
+repository:
+  url: ""
+
+git:
+  userName: Ilosia Developer
+  userEmail: developer@ilosia.invalid
+
+warpgate:
+  namespace: warpgate
+  podLabels:
+    app.kubernetes.io/name: warpgate
+  publicKeys: []
+
+storage:
+  size: 10Gi
+  storageClassName: ""
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+    ephemeral-storage: 256Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+    ephemeral-storage: 2Gi
+
+cloneResources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+    ephemeral-storage: 128Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi
+    ephemeral-storage: 1Gi
+
+temporaryStorage:
+  tmp: 1Gi
+  run: 64Mi
+
+networkPolicy:
+  dns:
+    namespace: kube-system
+    podLabels:
+      k8s-app: kube-dns
+  blockedCidrsV4:
+    - 10.0.0.0/8
+    - 100.64.0.0/10
+    - 169.254.0.0/16
+    - 172.16.0.0/12
+    - 192.168.0.0/16
+  blockedCidrsV6:
+    - fc00::/7
+    - fe80::/10

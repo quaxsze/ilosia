@@ -2,7 +2,7 @@
 set -eu
 
 namespace=${1:-aw0-workspace}
-selector=app.kubernetes.io/name=aw0-workspace
+selector=${2:-app.kubernetes.io/name=aw0-workspace}
 
 pod=$(kubectl get pods --namespace "$namespace" --selector "$selector" \
   --field-selector=status.phase=Running --output=name | sed -n '1s|pod/||p')

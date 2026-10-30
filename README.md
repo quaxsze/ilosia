@@ -129,6 +129,9 @@ La procédure Agent Workspace et Warpgate se trouve dans
 [`gitops/README.md`](gitops/README.md). Les certificats, backups et autres
 secrets locaux qu'elle génère ne doivent jamais être ajoutés à Git.
 
+L'image et le chart du workspace validés à l'étape AW2 sont documentés dans
+[`charts/agent-workspace/README.md`](charts/agent-workspace/README.md).
+
 Si le cluster existe déjà mais n'apparaît pas dans `kubectl`, importer son
 contexte local :
 

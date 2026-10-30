@@ -2,15 +2,20 @@
 set -eu
 
 namespace=warpgate
-target_name=aw0-workspace
-role_name=aw0-workspace
-sso_username=${WARPGATE_AW0_SSO_USERNAME:-}
-api_url=https://127.0.0.1:18888/@warpgate/admin/api
+target_name=${WARPGATE_TARGET_NAME:-aw0-workspace}
+role_name=${WARPGATE_ROLE_NAME:-$target_name}
+target_host=${WARPGATE_TARGET_HOST:-aw0-workspace.aw0-workspace.svc.cluster.local}
+target_description=${WARPGATE_TARGET_DESCRIPTION:-Local Agent Workspace AW0}
+sso_username=${WARPGATE_SSO_USERNAME:-${WARPGATE_AW0_SSO_USERNAME:-}}
+api_host=warpgate.warpgate.svc.cluster.local
+api_url=https://$api_host:18888/@warpgate/admin/api
+ca_file=${WARPGATE_CA_BUNDLE:-.local/warpgate/ca.crt}
 token=${WARPGATE_AW0_API_TOKEN:-}
 
-# shortcut: AW0 trusts only a loopback port-forward with a self-signed certificate, AW1 must use a CA bundle.
-
-if [ -z "$token" ] && kubectl get secret warpgate-aw0-api --namespace "$namespace" >/dev/null 2>&1; then
+if [ -z "$token" ] && kubectl get secret warpgate-secrets --namespace "$namespace" >/dev/null 2>&1; then
+  token=$(kubectl get secret warpgate-secrets --namespace "$namespace" \
+    --output='go-template={{index .data "apiToken" | base64decode}}')
+elif [ -z "$token" ] && kubectl get secret warpgate-aw0-api --namespace "$namespace" >/dev/null 2>&1; then
   token=$(kubectl get secret warpgate-aw0-api --namespace "$namespace" \
     --output='go-template={{index .data "token" | base64decode}}')
 fi
@@ -33,6 +38,15 @@ EOF
   exit 2
 fi
 
+warpgate_curl() {
+  if test -s "$ca_file"; then
+    curl --cacert "$ca_file" --resolve "$api_host:18888:127.0.0.1" "$@"
+  else
+    # shortcut: AW0 uses only a loopback port-forward until AW1 creates the CA bundle.
+    curl --insecure --resolve "$api_host:18888:127.0.0.1" "$@"
+  fi
+}
+
 port_forward_log=$(mktemp)
 api_response=$(mktemp)
 kubectl port-forward --namespace "$namespace" service/warpgate 18888:8888 \
@@ -41,8 +55,8 @@ port_forward_pid=$!
 trap 'kill "$port_forward_pid" 2>/dev/null || true; wait "$port_forward_pid" 2>/dev/null || true; rm -f "$port_forward_log" "$api_response"' EXIT INT TERM
 
 attempt=0
-until curl --insecure --silent --fail --max-time 1 \
-  https://127.0.0.1:18888/@warpgate/api/info >/dev/null 2>&1; do
+until warpgate_curl --silent --fail --max-time 1 \
+  "https://$api_host:18888/@warpgate/api/info" >/dev/null 2>&1; do
   attempt=$((attempt + 1))
   if [ "$attempt" -ge 50 ] || ! kill -0 "$port_forward_pid" 2>/dev/null; then
     echo "Warpgate port-forward did not become ready:" >&2
@@ -58,7 +72,7 @@ api_request() {
   body=${3-}
   : >"$api_response"
   if [ -n "$body" ]; then
-    status=$(curl --insecure --silent --show-error --max-time 10 \
+    status=$(warpgate_curl --silent --show-error --max-time 10 \
       --request "$method" \
       --header "x-warpgate-token: $token" \
       --header 'content-type: application/json' \
@@ -67,7 +81,7 @@ api_request() {
       --write-out '%{http_code}' \
       "$api_url$path") || status=000
   else
-    status=$(curl --insecure --silent --show-error --max-time 10 \
+    status=$(warpgate_curl --silent --show-error --max-time 10 \
       --request "$method" \
       --header "x-warpgate-token: $token" \
       --output "$api_response" \
@@ -125,15 +139,17 @@ role_id=$(printf '%s' "$roles" | exact_id name "$role_name") || role_id=
 if [ -z "$role_id" ]; then
   role_id=$(api_write POST /roles \
     "$(jq --compact-output --null-input --arg name "$role_name" \
-      '{name: $name, description: "Local Agent Workspace AW0"}')" | jq --exit-status --raw-output '.id')
+      --arg description "$target_description" \
+      '{name: $name, description: $description}')" | jq --exit-status --raw-output '.id')
 fi
 
 target_body=$(jq --compact-output --null-input \
   --arg name "$target_name" \
-  --arg host 'aw0-workspace.aw0-workspace.svc.cluster.local' \
+  --arg host "$target_host" \
+  --arg description "$target_description" \
   '{
     name: $name,
-    description: "Local Agent Workspace AW0",
+    description: $description,
     require_approval: false,
     ticket_requests_disabled: false,
     ticket_require_approval: false,
@@ -195,13 +211,15 @@ fi
 
 api_get "/targets/$target_id" | jq --exit-status \
   --arg name "$target_name" \
-  --arg host 'aw0-workspace.aw0-workspace.svc.cluster.local' \
+  --arg host "$target_host" \
   '.name == $name and .options.host == $host and .options.port == 2222' >/dev/null
 
-kubectl create secret generic warpgate-aw0-api \
-  --namespace "$namespace" \
-  --from-literal=token="$token" \
-  --dry-run=client \
-  --output=yaml | kubectl apply -f - >/dev/null
+if ! kubectl get secret warpgate-secrets --namespace "$namespace" >/dev/null 2>&1; then
+  kubectl create secret generic warpgate-aw0-api \
+    --namespace "$namespace" \
+    --from-literal=token="$token" \
+    --dry-run=client \
+    --output=yaml | kubectl apply -f - >/dev/null
+fi
 
 echo "Warpgate target, role, admin bindings and browser SSH approval are ready."
