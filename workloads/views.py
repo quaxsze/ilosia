@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
@@ -39,14 +40,17 @@ def launch(request, slug):
                 definition=definition,
                 data=form.cleaned_data,
             )
-        except ServiceQuotaExceeded as error:
+        except (ServiceQuotaExceeded, ValueError) as error:
             form.add_error(None, str(error))
             return render(
                 request,
                 "workloads/launch.html",
                 {"definition": definition, "form": form},
             )
-        if instance.status == ServiceInstance.Status.FAILED:
+        if instance.status in {
+            ServiceInstance.Status.FAILED,
+            ServiceInstance.Status.UNKNOWN,
+        }:
             messages.error(request, "The service could not be launched.")
         else:
             messages.success(request, f"{instance.display_name} is running.")
@@ -79,10 +83,18 @@ def service_detail(request, service_id):
     open_url = ""
     if service.status == ServiceInstance.Status.RUNNING:
         open_url = get_service_access_url(service)
+    agent_access = None
+    if service.service_definition.slug == "agent-workspace":
+        agent_access = {
+            "alias": f"ilosia-{service.id.hex[:8]}",
+            "host": settings.WARPGATE_SSH_HOST,
+            "port": settings.WARPGATE_SSH_PORT,
+            "user": f"u-{request.user.pk}:aw-{service.id.hex}",
+        }
     return render(
         request,
         "workloads/detail.html",
-        {"service": service, "open_url": open_url},
+        {"service": service, "open_url": open_url, "agent_access": agent_access},
     )
 
 
@@ -180,6 +192,9 @@ def service_delete(request, service_id):
     )
     try:
         delete_service_and_data(service)
+    except ValueError as error:
+        messages.error(request, str(error))
+        return redirect("workloads:detail", service_id=service.id)
     except (ClusterUnavailableError, HelmUninstallError):
         messages.error(request, "The service and its data could not be deleted.")
         return redirect("workloads:detail", service_id=service.id)

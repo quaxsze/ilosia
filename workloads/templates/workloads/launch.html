@@ -7,7 +7,13 @@
     <div class="col-lg-7">
       <a class="link-secondary text-decoration-none" href="{% url 'catalog:list' %}">← Catalog</a>
       <h1 class="h2 mt-3">Launch {{ definition.name }}</h1>
-      <p class="text-body-secondary">A dedicated JupyterLab will be created in Kubernetes.</p>
+      <p class="text-body-secondary">
+        {% if definition.slug == "agent-workspace" %}
+          A persistent remote development workspace will clone your public repository.
+        {% else %}
+          A dedicated JupyterLab will be created in Kubernetes.
+        {% endif %}
+      </p>
 
       <form method="post" class="card shadow-sm">
         <div class="card-body">

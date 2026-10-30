@@ -35,6 +35,17 @@ workloads:
     storage: 100Gi
     pods: "10"
 
+agentWorkspace:
+  image:
+    repository: ilosia-agent-workspace
+    pullPolicy: Never
+  warpgate:
+    url: https://warpgate.warpgate.svc.cluster.local:8888
+    caSecret: warpgate-ca
+    ssoProvider: keycloak-aw0
+    sshHost: 127.0.0.1
+    sshPort: 2222
+
 storage:
   endpointUrl: http://garage.ilosia.svc.cluster.local:3900
   adminEndpointUrl: http://garage.ilosia.svc.cluster.local:3903

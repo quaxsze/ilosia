@@ -380,6 +380,7 @@ class WorkloadViewTests(TestCase):
         client_class.return_value.get_pod_logs.assert_called_once_with(
             namespace=service.namespace,
             release_name=service.release_name,
+            container_name="jupyter",
             tail_lines=200,
         )
 
@@ -614,6 +615,19 @@ class PodStatusTests(TestCase):
                                         "waiting": {"reason": "ImagePullBackOff"}
                                     },
                                 }
+                            ],
+                        }
+                    }
+                ],
+                ServiceInstance.Status.FAILED,
+            ),
+            (
+                [
+                    {
+                        "status": {
+                            "phase": "Pending",
+                            "initContainerStatuses": [
+                                {"state": {"terminated": {"exitCode": 128}}}
                             ],
                         }
                     }

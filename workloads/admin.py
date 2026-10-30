@@ -19,6 +19,7 @@ class ServiceInstanceAdmin(admin.ModelAdmin):
         "release_name",
         "namespace",
         "public_url",
+        "repository_url",
         "created_at",
         "updated_at",
     )

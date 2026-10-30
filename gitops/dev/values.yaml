@@ -11,3 +11,8 @@ keycloak:
   enabled: true
   warpgateCaSecret: warpgate-ca
 
+agentWorkspace:
+  image:
+    repository: ghcr.io/quaxsze/ilosia-agent-workspace
+    pullPolicy: IfNotPresent
+

@@ -18,7 +18,12 @@ Warpgate `0.30.2` et les values suivies dans
   d'administration et la clé de chiffrement au repos ;
 - `warpgate-tls` contient le certificat de service ;
 - `warpgate-tls-ca` contient la CA locale et sa clé de renouvellement ;
-- `ilosia/warpgate-ca` fournit uniquement le certificat public à Keycloak.
+- `ilosia/warpgate-ca` fournit la CA à Keycloak et Ilosia, ainsi que les clés
+  SSH clientes publiques utilisées par les workspaces.
+
+Le Secret `ilosia-secrets` reçoit aussi `WARPGATE_API_TOKEN`. Le script de
+préparation synchronise cette valeur et les clés publiques sans les écrire dans
+Git.
 
 ### Migration AW1 locale
 
@@ -115,4 +120,20 @@ Après une CI réussie sur `main`, le workflow de publication pousse l'image GHC
 taggée avec le SHA testé puis modifie uniquement `gitops/dev/values.yaml`. Argo CD
 observe ce commit et synchronise le cluster ; le workflow n'appelle jamais Helm
 ou kubectl sur l'environnement.
+
+### Intégration Django AW3
+
+Avant de publier AW3, resynchroniser les Secrets externes :
+
+```bash
+./scripts/prepare_agent_workspace_aw1.sh
+./scripts/check_agent_workspace_aw1.sh
+```
+
+Après le déploiement GitOps, `Agent Workspace` apparaît dans le catalogue.
+Seuls les dépôts publics `https://github.com/<owner>/<repository>` sont acceptés.
+Les anciennes identités SSO créées pendant AW0 (`alos`, par exemple) doivent
+être retirées une fois de Warpgate avant le premier lancement : AW3 crée à leur
+place l'identité déterministe `u-<id Django>` et refuse volontairement de
+déplacer automatiquement une adresse e-mail déjà associée.
 

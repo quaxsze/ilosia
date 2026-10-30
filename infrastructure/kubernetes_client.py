@@ -31,7 +31,9 @@ class KubernetesClient:
         except (json.JSONDecodeError, KeyError) as error:
             raise ClusterUnavailableError("Invalid response from Kubernetes") from error
 
-    def get_pod_logs(self, *, namespace, release_name, tail_lines=200):
+    def get_pod_logs(
+        self, *, namespace, release_name, container_name="jupyter", tail_lines=200
+    ):
         pods = self.list_pods(namespace=namespace, release_name=release_name)
         if not pods:
             return "No pod found for this service."
@@ -40,7 +42,7 @@ class KubernetesClient:
             pods[0],
         )
         pod_name = pod["metadata"]["name"]
-        query = urlencode({"container": "jupyter", "tailLines": tail_lines})
+        query = urlencode({"container": container_name, "tailLines": tail_lines})
         return self._request(
             f"/api/v1/namespaces/{quote(namespace, safe='')}/pods/"
             f"{quote(pod_name, safe='')}/log?{query}"

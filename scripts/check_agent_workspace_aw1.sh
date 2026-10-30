@@ -18,6 +18,21 @@ for secret in warpgate-secrets warpgate-tls warpgate-tls-ca; do
   kubectl get secret "$secret" --namespace "$namespace" >/dev/null
 done
 kubectl get secret warpgate-ca --namespace ilosia >/dev/null
+public_keys=$(kubectl get secret warpgate-ca --namespace ilosia \
+  --output='go-template={{index .data "publicKeys" | base64decode}}')
+printf '%s' "$public_keys" | jq --exit-status \
+  'type == "array" and length > 0 and all(startswith("ssh-"))' >/dev/null || {
+  echo "FAIL: ilosia/warpgate-ca does not contain Warpgate public keys." >&2
+  exit 1
+}
+warpgate_token=$(kubectl get secret warpgate-secrets --namespace warpgate \
+  --output='go-template={{index .data "apiToken" | base64decode}}')
+ilosia_token=$(kubectl get secret ilosia-secrets --namespace ilosia \
+  --output='go-template={{index .data "WARPGATE_API_TOKEN" | base64decode}}')
+[ -n "$ilosia_token" ] && [ "$ilosia_token" = "$warpgate_token" ] || {
+  echo "FAIL: Ilosia does not have the current Warpgate API token." >&2
+  exit 1
+}
 
 encryption_key=$(kubectl get secret warpgate-secrets --namespace "$namespace" \
   --output='go-template={{index .data "encryptionKey" | base64decode}}')

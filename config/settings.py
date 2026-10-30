@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 
@@ -145,7 +146,9 @@ AUTHENTICATION_BACKENDS = ["django.contrib.auth.backends.ModelBackend"]
 if OIDC_ENABLED:
     AUTHENTICATION_BACKENDS.append("accounts.backends.KeycloakAuthenticationBackend")
 
-WORKLOAD_CHART_PATH = BASE_DIR / "charts" / "jupyter"
+JUPYTER_CHART_PATH = BASE_DIR / "charts" / "jupyter"
+AGENT_WORKSPACE_CHART_PATH = BASE_DIR / "charts" / "agent-workspace"
+WORKLOAD_CHART_PATH = JUPYTER_CHART_PATH
 WORKLOAD_BASE_DOMAIN = os.getenv("WORKLOAD_BASE_DOMAIN", "localhost")
 WORKLOAD_INGRESS_SCHEME = os.getenv("WORKLOAD_INGRESS_SCHEME", "http")
 WORKLOAD_INGRESS_PORT = int(os.getenv("WORKLOAD_INGRESS_PORT", "8080"))
@@ -156,6 +159,30 @@ USER_NAMESPACE_QUOTA = {
     "requests.storage": os.getenv("USER_QUOTA_STORAGE", "100Gi"),
     "pods": os.getenv("USER_QUOTA_PODS", "10"),
 }
+
+WARPGATE_URL = os.getenv(
+    "WARPGATE_URL", "https://warpgate.warpgate.svc.cluster.local:8888"
+)
+WARPGATE_API_TOKEN = os.getenv("WARPGATE_API_TOKEN", "")
+WARPGATE_CA_BUNDLE = os.getenv("WARPGATE_CA_BUNDLE", "")
+WARPGATE_SSO_PROVIDER = os.getenv("WARPGATE_SSO_PROVIDER", "keycloak-aw0")
+WARPGATE_SSH_HOST = os.getenv("WARPGATE_SSH_HOST", "127.0.0.1")
+WARPGATE_SSH_PORT = int(os.getenv("WARPGATE_SSH_PORT", "2222"))
+try:
+    WARPGATE_PUBLIC_KEYS = json.loads(os.getenv("WARPGATE_PUBLIC_KEYS", "[]"))
+except json.JSONDecodeError as error:
+    raise ImproperlyConfigured("WARPGATE_PUBLIC_KEYS must be a JSON array") from error
+if not isinstance(WARPGATE_PUBLIC_KEYS, list) or not all(
+    isinstance(key, str) for key in WARPGATE_PUBLIC_KEYS
+):
+    raise ImproperlyConfigured("WARPGATE_PUBLIC_KEYS must be a JSON array of strings")
+AGENT_WORKSPACE_IMAGE_REPOSITORY = os.getenv(
+    "AGENT_WORKSPACE_IMAGE_REPOSITORY", "ilosia-agent-workspace"
+)
+AGENT_WORKSPACE_IMAGE_TAG = os.getenv("AGENT_WORKSPACE_IMAGE_TAG", "dev")
+AGENT_WORKSPACE_IMAGE_PULL_POLICY = os.getenv(
+    "AGENT_WORKSPACE_IMAGE_PULL_POLICY", "Never"
+)
 
 S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "")
 S3_PUBLIC_ENDPOINT_URL = os.getenv("S3_PUBLIC_ENDPOINT_URL", "")

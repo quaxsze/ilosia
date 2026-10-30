@@ -71,6 +71,18 @@ spec:
                   name: {{ .Values.existingSecret }}
                   key: OIDC_RP_CLIENT_SECRET
                   optional: true
+            - name: WARPGATE_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: WARPGATE_API_TOKEN
+                  optional: true
+            - name: WARPGATE_PUBLIC_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.agentWorkspace.warpgate.caSecret }}
+                  key: publicKeys
+                  optional: true
             - name: POD_IP
               valueFrom:
                 fieldRef:
@@ -112,6 +124,13 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            - name: warpgate-ca
+              mountPath: /etc/ilosia/warpgate-ca/ca.crt
+              subPath: ca.crt
+              readOnly: true
       volumes:
         - name: tmp
           emptyDir: {}
+        - name: warpgate-ca
+          secret:
+            secretName: {{ .Values.agentWorkspace.warpgate.caSecret }}

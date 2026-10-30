@@ -61,6 +61,15 @@ fi
 secret_value warpgate-tls-ca ca.crt >"$tmp_dir/ca.crt"
 secret_value warpgate-tls-ca ca.key >"$tmp_dir/ca.key"
 
+public_keys=$(kubectl exec --namespace "$namespace" deployment/warpgate \
+  --container warpgate -- warpgate client-keys 2>/dev/null | \
+  awk '/^ssh-(ed25519|rsa) /' | jq --raw-input --slurp \
+  'split("\n") | map(select(length > 0))')
+[ "$public_keys" != "[]" ] || {
+  echo "Warpgate did not return a client SSH key." >&2
+  exit 1
+}
+
 if ! kubectl get secret warpgate-tls --namespace "$namespace" >/dev/null 2>&1; then
   openssl req -newkey rsa:3072 -nodes \
     -subj "/CN=$public_host" \
@@ -85,7 +94,14 @@ chmod 0644 "$local_dir/ca.crt"
 kubectl create secret generic warpgate-ca \
   --namespace "$keycloak_namespace" \
   --from-file=ca.crt="$tmp_dir/ca.crt" \
+  --from-literal=publicKeys="$public_keys" \
   --dry-run=client --output=yaml | kubectl apply -f - >/dev/null
+
+api_token_base64=$(printf '%s' "$api_token" | base64 | tr -d '\n')
+api_token_patch=$(jq --null-input --compact-output --arg value "$api_token_base64" \
+  '{data:{WARPGATE_API_TOKEN:$value}}')
+kubectl patch secret ilosia-secrets --namespace "$keycloak_namespace" \
+  --type=merge --patch "$api_token_patch" >/dev/null
 
 redirect_uri="https://$public_host:$public_port/@warpgate/api/sso/return"
 web_origin="https://$public_host:$public_port"

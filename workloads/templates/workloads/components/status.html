@@ -12,23 +12,25 @@
   {% if service.status != "STOPPED" and service.status != "DELETED" %}
     <a class="btn btn-outline-secondary" href="{% url 'workloads:logs' service.id %}">Logs</a>
   {% endif %}
-  {% if service.status == "RUNNING" or service.status == "UNKNOWN" %}
-    <form method="post" action="{% url 'workloads:stop' service.id %}" onsubmit="return confirm('Stop this service? Its persistent data will be kept.');">
-      {% csrf_token %}
-      <button class="btn btn-outline-secondary" type="submit">Stop</button>
-    </form>
-  {% endif %}
-  {% if service.status == "STOPPED" %}
-    <form method="post" action="{% url 'workloads:restart' service.id %}">
-      {% csrf_token %}
-      <button class="btn btn-primary" type="submit">Restart</button>
-    </form>
-  {% endif %}
-  {% if service.status != "DELETED" %}
-    <form method="post" action="{% url 'workloads:delete' service.id %}" onsubmit="return confirm('Permanently delete this service and all data on its persistent volume? This cannot be undone.');">
-      {% csrf_token %}
-      <button class="btn btn-outline-danger" type="submit" {% if service.status == "STOPPING" or service.status == "DELETING" or service.status == "INSTALLING" %}disabled{% endif %}>Delete service and data</button>
-    </form>
+  {% if service.service_definition.slug == "jupyter" %}
+    {% if service.status == "RUNNING" or service.status == "UNKNOWN" %}
+      <form method="post" action="{% url 'workloads:stop' service.id %}" onsubmit="return confirm('Stop this service? Its persistent data will be kept.');">
+        {% csrf_token %}
+        <button class="btn btn-outline-secondary" type="submit">Stop</button>
+      </form>
+    {% endif %}
+    {% if service.status == "STOPPED" %}
+      <form method="post" action="{% url 'workloads:restart' service.id %}">
+        {% csrf_token %}
+        <button class="btn btn-primary" type="submit">Restart</button>
+      </form>
+    {% endif %}
+    {% if service.status != "DELETED" %}
+      <form method="post" action="{% url 'workloads:delete' service.id %}" onsubmit="return confirm('Permanently delete this service and all data on its persistent volume? This cannot be undone.');">
+        {% csrf_token %}
+        <button class="btn btn-outline-danger" type="submit" {% if service.status == "STOPPING" or service.status == "DELETING" or service.status == "INSTALLING" %}disabled{% endif %}>Delete service and data</button>
+      </form>
+    {% endif %}
   {% endif %}
   <span class="badge text-bg-secondary fs-6">{{ service.get_status_display }}</span>
 </div>

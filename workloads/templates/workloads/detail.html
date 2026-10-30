@@ -29,11 +29,42 @@
         <dd class="col-sm-8">{{ service.release_name|default:"—" }}</dd>
         <dt class="col-sm-4">URL</dt>
         <dd class="col-sm-8">{{ service.public_url|default:"—" }}</dd>
+        {% if service.repository_url %}
+          <dt class="col-sm-4">Repository</dt>
+          <dd class="col-sm-8"><a href="{{ service.repository_url }}" rel="noopener noreferrer">{{ service.repository_url }}</a></dd>
+        {% endif %}
         <dt class="col-sm-4">Created</dt>
         <dd class="col-sm-8 mb-0">{{ service.created_at }}</dd>
       </dl>
     </div>
   </div>
+
+  {% if agent_access %}
+    <div class="card shadow-sm mt-4">
+      <div class="card-header">Remote access</div>
+      <div class="card-body">
+        <p>Add this block to <code>~/.ssh/config</code>:</p>
+        <pre class="bg-body-tertiary border rounded p-3"><code>Host {{ agent_access.alias }}
+    HostName {{ agent_access.host }}
+    Port {{ agent_access.port }}
+    User {{ agent_access.user }}
+    PreferredAuthentications keyboard-interactive
+    PubkeyAuthentication no
+    PasswordAuthentication no
+    ControlMaster auto
+    ControlPath ~/.ssh/cm-%C
+    ControlPersist 10m</code></pre>
+        <p class="mb-2">Then connect Herdr:</p>
+        <pre class="bg-body-tertiary border rounded p-3"><code>herdr machine add {{ agent_access.alias }}
+herdr --remote {{ agent_access.alias }}</code></pre>
+        <div class="alert alert-warning mb-0">
+          Run <code>codex login --device-auth</code> in the workspace. Codex must use
+          <code>danger-full-access</code>: the Kubernetes Pod is the security sandbox.
+          Stopping or deleting the Pod ends all running processes.
+        </div>
+      </div>
+    </div>
+  {% endif %}
 
   {% if service.environment_variables.all %}
     <div class="card shadow-sm mt-4">

@@ -38,7 +38,7 @@ overrides_config: |
   sso_providers:
     - name: keycloak-aw0
       label: Keycloak
-      auto_create_users: true
+      auto_create_users: false
       provider:
         type: custom
         client_id: warpgate-aw0

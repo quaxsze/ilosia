@@ -95,10 +95,7 @@ def _workload_s3_environment(user):
     }
 
 
-def launch_service(*, user, definition, data):
-    if definition.slug != "jupyter":
-        raise ValueError(f"Unsupported service definition: {definition.slug}")
-
+def _create_service_instance(*, user, definition, data, release_prefix):
     environment = data.get("environment_variables", {})
     secrets = data.get("secret_variables", {})
     with transaction.atomic():
@@ -118,12 +115,14 @@ def launch_service(*, user, definition, data):
             cpu_units=data["cpu_units"],
             memory_mib=data["memory_gib"] * 1024,
             storage_mib=data["storage_gib"] * 1024,
+            repository_url=data.get("repository_url", ""),
             status=ServiceInstance.Status.INSTALLING,
         )
-        instance.release_name = f"jupyter-{instance.id.hex}"
+        instance.release_name = f"{release_prefix}-{instance.id.hex}"
         instance.namespace = f"user-{user.pk}"
-        host = f"{instance.release_name}.{settings.WORKLOAD_BASE_DOMAIN}"
-        instance.public_url = _public_url(host)
+        if release_prefix == "jupyter":
+            host = f"{instance.release_name}.{settings.WORKLOAD_BASE_DOMAIN}"
+            instance.public_url = _public_url(host)
         instance.full_clean()
         instance.save()
 
@@ -145,6 +144,25 @@ def launch_service(*, user, definition, data):
                 for name in secrets
             ]
         )
+    return instance
+
+
+def launch_service(*, user, definition, data):
+    if definition.slug == "agent-workspace":
+        from .agent_workspace_services import launch_agent_workspace
+
+        return launch_agent_workspace(user=user, definition=definition, data=data)
+    if definition.slug != "jupyter":
+        raise ValueError(f"Unsupported service definition: {definition.slug}")
+
+    environment = data.get("environment_variables", {})
+    secrets = data.get("secret_variables", {})
+    instance = _create_service_instance(
+        user=user,
+        definition=definition,
+        data=data,
+        release_prefix="jupyter",
+    )
 
     # shortcut: launch blocks one web worker; add a job queue when launches become long-running.
     kubernetes = KubernetesClient()
@@ -171,7 +189,7 @@ def launch_service(*, user, definition, data):
         secret_created = True
         HelmClient().install(
             release_name=instance.release_name,
-            chart_path=settings.WORKLOAD_CHART_PATH,
+            chart_path=settings.JUPYTER_CHART_PATH,
             namespace=instance.namespace,
             values=build_jupyter_values(
                 instance,
@@ -205,10 +223,13 @@ def refresh_service_status(instance, *, client=None):
         ServiceInstance.Status.DELETED,
     }:
         return instance.status
+    if instance.status == ServiceInstance.Status.UNKNOWN:
+        return instance.status
     if not instance.namespace or not instance.release_name:
         return instance.status
 
     client = client or KubernetesClient()
+    pods = None
     try:
         pods = client.list_pods(
             namespace=instance.namespace,
@@ -216,9 +237,17 @@ def refresh_service_status(instance, *, client=None):
         )
     except ClusterUnavailableError:
         logger.warning("Kubernetes status unavailable for service %s", instance.id)
-        status = ServiceInstance.Status.UNKNOWN
+        instance.status = ServiceInstance.Status.UNKNOWN
+        return instance.status
     else:
         status = _pods_status(pods)
+
+    if (
+        instance.status == ServiceInstance.Status.FAILED
+        and pods == []
+        and status == ServiceInstance.Status.UNKNOWN
+    ):
+        status = ServiceInstance.Status.FAILED
 
     if instance.status != status:
         instance.status = status
@@ -232,10 +261,15 @@ def _pods_status(pods):
         pod_status = pod.get("status", {})
         phase = pod_status.get("phase")
         container_statuses = pod_status.get("containerStatuses", [])
+        init_container_statuses = pod_status.get("initContainerStatuses", [])
         waiting_reasons = {
             item.get("state", {}).get("waiting", {}).get("reason")
-            for item in container_statuses
+            for item in container_statuses + init_container_statuses
         }
+        init_failed = any(
+            item.get("state", {}).get("terminated", {}).get("exitCode", 0) != 0
+            for item in init_container_statuses
+        )
         if (
             phase == "Running"
             and container_statuses
@@ -244,8 +278,10 @@ def _pods_status(pods):
             statuses.append(ServiceInstance.Status.RUNNING)
         elif phase == "Unknown":
             statuses.append(ServiceInstance.Status.UNKNOWN)
-        elif phase in {"Failed", "Succeeded"} or (
-            waiting_reasons & FAILED_CONTAINER_REASONS
+        elif (
+            phase in {"Failed", "Succeeded"}
+            or init_failed
+            or (waiting_reasons & FAILED_CONTAINER_REASONS)
         ):
             statuses.append(ServiceInstance.Status.FAILED)
         else:
@@ -267,6 +303,11 @@ def get_service_logs(instance):
         return KubernetesClient().get_pod_logs(
             namespace=instance.namespace,
             release_name=instance.release_name,
+            container_name=(
+                "workspace"
+                if instance.service_definition.slug == "agent-workspace"
+                else "jupyter"
+            ),
             tail_lines=200,
         )
     except ClusterUnavailableError:
@@ -275,6 +316,8 @@ def get_service_logs(instance):
 
 
 def stop_service(instance):
+    if instance.service_definition.slug != "jupyter":
+        raise ValueError("Agent Workspace lifecycle actions arrive in AW4.")
     if instance.status == ServiceInstance.Status.STOPPED:
         return
     if instance.status not in {
@@ -302,6 +345,8 @@ def stop_service(instance):
 
 
 def restart_service(instance):
+    if instance.service_definition.slug != "jupyter":
+        raise ValueError("Agent Workspace lifecycle actions arrive in AW4.")
     if instance.status != ServiceInstance.Status.STOPPED:
         raise ValueError("Only stopped services can be restarted.")
     if not instance.namespace or not instance.release_name:
@@ -328,7 +373,7 @@ def restart_service(instance):
             secret_names.update(S3_ENVIRONMENT_NAMES)
         HelmClient().install(
             release_name=instance.release_name,
-            chart_path=settings.WORKLOAD_CHART_PATH,
+            chart_path=settings.JUPYTER_CHART_PATH,
             namespace=instance.namespace,
             values=build_jupyter_values(
                 instance,
@@ -347,6 +392,8 @@ def restart_service(instance):
 
 
 def delete_service_and_data(instance):
+    if instance.service_definition.slug != "jupyter":
+        raise ValueError("Agent Workspace lifecycle actions arrive in AW4.")
     if instance.status == ServiceInstance.Status.DELETED:
         return
     if not instance.namespace or not instance.release_name:

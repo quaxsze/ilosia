@@ -54,6 +54,7 @@ class CatalogViewTests(TestCase):
         response = self.client.get(reverse("catalog:list"))
 
         self.assertContains(response, "JupyterLab")
+        self.assertContains(response, "Agent Workspace")
         self.assertNotContains(response, "Disabled service")
 
 

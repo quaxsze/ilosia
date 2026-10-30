@@ -20,6 +20,14 @@ data:
   USER_QUOTA_MEMORY: {{ .Values.workloads.quota.memory | quote }}
   USER_QUOTA_STORAGE: {{ .Values.workloads.quota.storage | quote }}
   USER_QUOTA_PODS: {{ .Values.workloads.quota.pods | quote }}
+  AGENT_WORKSPACE_IMAGE_REPOSITORY: {{ .Values.agentWorkspace.image.repository | quote }}
+  AGENT_WORKSPACE_IMAGE_TAG: {{ .Values.image.tag | quote }}
+  AGENT_WORKSPACE_IMAGE_PULL_POLICY: {{ .Values.agentWorkspace.image.pullPolicy | quote }}
+  WARPGATE_URL: {{ .Values.agentWorkspace.warpgate.url | quote }}
+  WARPGATE_CA_BUNDLE: "/etc/ilosia/warpgate-ca/ca.crt"
+  WARPGATE_SSO_PROVIDER: {{ .Values.agentWorkspace.warpgate.ssoProvider | quote }}
+  WARPGATE_SSH_HOST: {{ .Values.agentWorkspace.warpgate.sshHost | quote }}
+  WARPGATE_SSH_PORT: {{ .Values.agentWorkspace.warpgate.sshPort | quote }}
   S3_ENDPOINT_URL: {{ .Values.storage.endpointUrl | quote }}
   S3_PUBLIC_ENDPOINT_URL: {{ .Values.storage.publicEndpointUrl | quote }}
   S3_BROWSER_ENDPOINT_URL: {{ .Values.storage.browserEndpointUrl | quote }}

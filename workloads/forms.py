@@ -1,7 +1,11 @@
 from django import forms
 from django.core.validators import MaxValueValidator, MinValueValidator
 
-from .models import environment_name_validator, service_name_validator
+from .models import (
+    environment_name_validator,
+    service_name_validator,
+    validate_github_repository_url,
+)
 
 RESERVED_VARIABLES = {
     "JUPYTER_TOKEN",
@@ -22,6 +26,13 @@ class LaunchServiceForm(forms.Form):
     cpu_units = forms.IntegerField(label="CPU")
     memory_gib = forms.IntegerField(label="Memory (GiB)")
     storage_gib = forms.IntegerField(label="Storage (GiB)")
+    repository_url = forms.URLField(
+        label="Public GitHub repository",
+        required=False,
+        max_length=2048,
+        validators=[validate_github_repository_url],
+        help_text="https://github.com/<owner>/<repository>",
+    )
     environment_variables = forms.CharField(
         label="Environment variables",
         required=False,
@@ -42,6 +53,13 @@ class LaunchServiceForm(forms.Form):
     def __init__(self, *args, definition, **kwargs):
         super().__init__(*args, **kwargs)
         self.definition = definition
+
+        if definition.slug == "agent-workspace":
+            self.fields["repository_url"].required = True
+            self.fields.pop("environment_variables")
+            self.fields.pop("secret_variables")
+        else:
+            self.fields.pop("repository_url")
 
         self.fields["display_name"].initial = f"my-{definition.slug}"
         self._configure_number_field(
@@ -82,6 +100,9 @@ class LaunchServiceForm(forms.Form):
         if not display_name:
             raise forms.ValidationError("Enter a name.")
         return display_name
+
+    def clean_repository_url(self):
+        return self.cleaned_data["repository_url"].strip()
 
     def clean_environment_variables(self):
         return self._parse_variables("environment_variables")
