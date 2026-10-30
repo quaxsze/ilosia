@@ -1,0 +1,127 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: __NAME__-data
+  namespace: __NAMESPACE__
+  labels:
+    app.kubernetes.io/name: __NAME__
+    ilosia.dev/benchmark: agent-workspace-aw0
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: __NAME__
+  namespace: __NAMESPACE__
+  labels:
+    app.kubernetes.io/name: __NAME__
+    ilosia.dev/benchmark: agent-workspace-aw0
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: __NAME__
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: __NAME__
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: __NODE__
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: clone
+          image: __IMAGE__
+          imagePullPolicy: Always
+          workingDir: /tmp
+          command: [/bin/sh, -c]
+          args:
+            - |-
+              set -eu
+              mkdir -p /workspace/home /workspace/ssh-host-keys
+              git clone --filter=blob:none -- __REPOSITORY__ /workspace/repository
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+              ephemeral-storage: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+              ephemeral-storage: 1Gi
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+            - name: tmp
+              mountPath: /tmp
+      containers:
+        - name: workspace
+          image: __IMAGE__
+          imagePullPolicy: Always
+          env:
+            - name: AUTHORIZED_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: benchmark-authorized-keys
+                  key: authorizedKeys
+          ports:
+            - name: ssh
+              containerPort: 2222
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - test -s /run/sshd/sshd.pid && kill -0 "$(cat /run/sshd/sshd.pid)"
+            periodSeconds: 2
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+              ephemeral-storage: 256Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+              ephemeral-storage: 2Gi
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+            - name: tmp
+              mountPath: /tmp
+            - name: run
+              mountPath: /run
+      volumes:
+        - name: workspace
+          persistentVolumeClaim:
+            claimName: __NAME__-data
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: run
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi

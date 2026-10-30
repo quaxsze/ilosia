@@ -1,0 +1,199 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aw0-workspace
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: aw0-workspace-data
+  namespace: aw0-workspace
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aw0-workspace
+  namespace: aw0-workspace
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aw0-workspace
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: aw0-workspace
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: clone
+          image: ilosia-agent-workspace-aw0:0.1.0
+          imagePullPolicy: IfNotPresent
+          workingDir: /tmp
+          command: [/bin/sh, -c]
+          args:
+            - |-
+              set -eu
+              if [ ! -d /workspace/repository/.git ]; then
+                rm -rf /workspace/repository /workspace/.clone-tmp &&
+                git clone --filter=blob:none -- https://github.com/quaxsze/ilosia.git /workspace/.clone-tmp &&
+                mv /workspace/.clone-tmp /workspace/repository
+              fi
+              find /workspace/ssh-host-keys -type f ! -name '*.pub' -exec chmod 0600 {} \;
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+              ephemeral-storage: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+              ephemeral-storage: 1Gi
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+            - name: tmp
+              mountPath: /tmp
+      containers:
+        - name: workspace
+          image: ilosia-agent-workspace-aw0:0.1.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: AUTHORIZED_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: aw0-authorized-keys
+                  key: authorizedKeys
+          ports:
+            - name: ssh
+              containerPort: 2222
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - test -s /run/sshd/sshd.pid && kill -0 "$(cat /run/sshd/sshd.pid)"
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - test -s /run/sshd/sshd.pid && kill -0 "$(cat /run/sshd/sshd.pid)"
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+              ephemeral-storage: 256Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+              ephemeral-storage: 2Gi
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+            - name: tmp
+              mountPath: /tmp
+            - name: run
+              mountPath: /run
+      volumes:
+        - name: workspace
+          persistentVolumeClaim:
+            claimName: aw0-workspace-data
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: run
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aw0-workspace
+  namespace: aw0-workspace
+spec:
+  selector:
+    app.kubernetes.io/name: aw0-workspace
+  ports:
+    - name: ssh
+      port: 2222
+      targetPort: ssh
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: aw0-workspace
+  namespace: aw0-workspace
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: aw0-workspace
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: warpgate
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: warpgate
+      ports:
+        - protocol: TCP
+          port: 2222
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 100.64.0.0/10
+              - 169.254.0.0/16
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443

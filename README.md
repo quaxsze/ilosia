@@ -54,6 +54,38 @@ uv run ruff format --check .
 
 Le healthcheck est disponible sur <http://127.0.0.1:8000/healthz/>.
 
+## Agent Workspace — AW0
+
+Le spike d'architecture Agent Workspace se prépare localement sans modifier
+Django :
+
+```bash
+brew install herdr
+./scripts/setup_agent_workspace_aw0.sh
+```
+
+La première exécution demande le mot de passe administrateur Warpgate. Warpgate
+demande ensuite la création unique d'un token API dans son interface ; le script
+affiche la procédure exacte et la relance converge tout le socle local.
+
+Consigner ensuite les mesures dans
+[`spikes/agent-workspace/AW0_REPORT.md`](spikes/agent-workspace/AW0_REPORT.md).
+
+Le dernier test AW0 configure un client Keycloak temporaire et vérifie le
+back-channel logout de bout en bout :
+
+```bash
+./scripts/configure_agent_workspace_aw0_oidc.sh <keycloak-username>
+./scripts/check_agent_workspace_aw0_logout.sh <keycloak-username>
+```
+
+La procédure interactive minimale (première connexion SSO et session SSH à
+révoquer) est détaillée dans le rapport AW0.
+La configuration k3d publie désormais le port SSH 2222, mais cette modification
+ne s'applique à un cluster existant qu'après sa recréation. Ne pas supprimer le
+cluster actuel sans avoir sauvegardé ou explicitement accepté la perte de ses
+PVC `local-path`.
+
 ## Arrêt
 
 ```bash

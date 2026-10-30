@@ -1,0 +1,10 @@
+volumes:
+  - name: aw0-config
+    secret:
+      secretName: warpgate-aw0-config
+
+volume_mounts:
+  - name: aw0-config
+    mountPath: /data/warpgate.yaml
+    subPath: warpgate.yaml
+    readOnly: true

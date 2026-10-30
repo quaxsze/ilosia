@@ -209,7 +209,10 @@ spec:
                   name: {{ .Values.existingSecret }}
                   key: KEYCLOAK_POSTGRES_PASSWORD
             - name: KC_BOOTSTRAP_ADMIN_USERNAME
-              value: admin
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: KEYCLOAK_ADMIN_USERNAME
             - name: KC_BOOTSTRAP_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
