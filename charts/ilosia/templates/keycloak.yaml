@@ -223,6 +223,10 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.existingSecret }}
                   key: OIDC_RP_CLIENT_SECRET
+            {{- with .Values.keycloak.warpgateCaSecret }}
+            - name: KC_TRUSTSTORE_PATHS
+              value: /opt/keycloak/conf/truststores/warpgate-ca.crt
+            {{- end }}
           ports:
             - name: http
               containerPort: 8080
@@ -247,10 +251,21 @@ spec:
               mountPath: /opt/keycloak/data/import/ilosia-realm.json
               subPath: ilosia-realm.json
               readOnly: true
+            {{- with .Values.keycloak.warpgateCaSecret }}
+            - name: warpgate-ca
+              mountPath: /opt/keycloak/conf/truststores/warpgate-ca.crt
+              subPath: ca.crt
+              readOnly: true
+            {{- end }}
       volumes:
         - name: realm
           configMap:
             name: keycloak-realm
+        {{- with .Values.keycloak.warpgateCaSecret }}
+        - name: warpgate-ca
+          secret:
+            secretName: {{ . }}
+        {{- end }}
 ---
 apiVersion: v1
 kind: Service

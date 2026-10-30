@@ -105,6 +105,7 @@ observability:
 # shortcut: one Keycloak replica is enough for local k3d; production needs HA and backups.
 keycloak:
   enabled: false
+  warpgateCaSecret: ""
   image:
     repository: quay.io/keycloak/keycloak
     tag: 26.8.1

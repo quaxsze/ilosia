@@ -125,6 +125,10 @@ kubectl wait --namespace nginx-ingress \
   --timeout=180s
 ```
 
+La procédure Agent Workspace et Warpgate se trouve dans
+[`gitops/README.md`](gitops/README.md). Les certificats, backups et autres
+secrets locaux qu'elle génère ne doivent jamais être ajoutés à Git.
+
 Si le cluster existe déjà mais n'apparaît pas dans `kubectl`, importer son
 contexte local :
 

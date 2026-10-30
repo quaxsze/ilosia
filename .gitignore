@@ -16,5 +16,7 @@ observability/secret.yaml
 *.tfplan
 terraform.tfvars
 crash.log
+.local/
+backups/warpgate/
 
 

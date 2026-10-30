@@ -5,6 +5,15 @@ metadata:
   namespace: argocd
 spec:
   project: default
+  # shortcut: k3d's host gateway is discovered locally and patched by the AW1
+  # preparation script; production DNS removes this ignored field.
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      name: warpgate
+      namespace: warpgate
+      jsonPointers:
+        - /spec/template/spec/hostAliases
   sources:
     - repoURL: ghcr.io/warp-tech/helm-charts
       chart: warpgate
@@ -25,3 +34,4 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      - RespectIgnoreDifferences=true

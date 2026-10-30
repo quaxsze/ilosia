@@ -6,8 +6,8 @@ image:
 setup:
   enabled: true
   envFromSecret:
-    # shortcut: reuse AW0 Secret names for local adoption; rename them before staging.
-    WARPGATE_ADMIN_PASSWORD: warpgate-aw0/adminPassword
+    WARPGATE_ADMIN_PASSWORD: warpgate-secrets/adminPassword
+    WARPGATE_OIDC_CLIENT_SECRET: warpgate-secrets/oidcClientSecret
   ssh: 2222
   http: 8888
   mysql: 0
@@ -26,6 +26,59 @@ data:
 podSecurityContext:
   fsGroup: 1000
 
+envFromSecret:
+  WARPGATE_ENCRYPTION_KEY: warpgate-secrets/encryptionKey
+
+tls_cert_secret: warpgate-tls
+
+config_env_var_replace: WARPGATE_OIDC_CLIENT_SECRET
+
+overrides_config: |
+  external_host: warpgate.localhost
+  sso_providers:
+    - name: keycloak-aw0
+      label: Keycloak
+      auto_create_users: true
+      provider:
+        type: custom
+        client_id: warpgate-aw0
+        client_secret: $WARPGATE_OIDC_CLIENT_SECRET
+        issuer_url: http://keycloak.localhost:8080/realms/ilosia
+        scopes: [openid, profile, email]
+  recordings:
+    enable: true
+    path: /data/recordings
+  database_url: sqlite:/data/db
+  ssh:
+    enable: true
+    listen: 0.0.0.0:2222
+    external_host: localhost
+    external_port: 2222
+    keys: /data/ssh-keys
+    host_key_verification: prompt
+    inactivity_timeout: 5m
+  http:
+    listen: 0.0.0.0:8888
+    external_host: warpgate.localhost
+    external_port: 8443
+    certificate: /data/tls.certificate.pem
+    key: /data/tls.key.pem
+    trust_x_forwarded_headers: true
+    session_max_age: 30m
+    cookie_max_age: 1day
+    sni_certificates: []
+  kubernetes:
+    enable: false
+  mysql:
+    enable: false
+  postgres:
+    enable: false
+  log:
+    retention: 7days
+    audit_retention: 30days
+    send_to: null
+    format: text
+
 service:
   type: LoadBalancer
   ports:
@@ -34,17 +87,22 @@ service:
     mysql: 0
     pgsql: 0
 
-# The OIDC client secret is part of this external Kubernetes Secret, never Git.
-volumes:
-  - name: aw0-config
-    secret:
-      secretName: warpgate-aw0-config
-
-volume_mounts:
-  - name: aw0-config
-    mountPath: /data/warpgate.yaml
-    subPath: warpgate.yaml
-    readOnly: true
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: null
+    kubernetes.io/ingress.class: null
+    nginx.org/ssl-services: warpgate
+  hosts:
+    - host: warpgate.localhost
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: warpgate-tls
+      hosts:
+        - warpgate.localhost
 
 resources:
   requests:

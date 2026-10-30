@@ -47,6 +47,7 @@ jobs:
       - run: uv run python manage.py test
       - uses: azure/setup-helm@v4
       - run: helm lint charts/ilosia
+      - run: helm template ilosia charts/ilosia --values gitops/dev/values.yaml >/dev/null
       - run: helm lint charts/jupyter --set ingress.host=jupyter-test.localhost
       - run: >-
           helm template warpgate

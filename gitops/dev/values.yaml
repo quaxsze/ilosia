@@ -9,4 +9,5 @@ authentication:
 
 keycloak:
   enabled: true
+  warpgateCaSecret: warpgate-ca
 
