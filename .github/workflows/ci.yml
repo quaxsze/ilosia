@@ -43,10 +43,17 @@ jobs:
       - run: uv sync --frozen
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      - run: sh -n scripts/check_jupyter_storage.sh
+      - run: for script in scripts/*.sh; do sh -n "$script"; done
       - run: uv run python manage.py test
       - uses: azure/setup-helm@v4
       - run: helm lint charts/ilosia
       - run: helm lint charts/jupyter --set ingress.host=jupyter-test.localhost
+      - run: >-
+          helm template warpgate
+          oci://ghcr.io/warp-tech/helm-charts/warpgate
+          --version 0.2.0
+          --namespace warpgate
+          --values gitops/dev/warpgate-values.yaml
+          >/dev/null
       - run: docker build --tag ilosia:ci .
 

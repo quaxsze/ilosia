@@ -1,0 +1,55 @@
+replicaCount: 1
+
+image:
+  tag: "0.30.2"
+
+setup:
+  enabled: true
+  envFromSecret:
+    # shortcut: reuse AW0 Secret names for local adoption; rename them before staging.
+    WARPGATE_ADMIN_PASSWORD: warpgate-aw0/adminPassword
+  ssh: 2222
+  http: 8888
+  mysql: 0
+  pgsql: 0
+  kubernetes: 0
+
+data:
+  pvc:
+    enabled: true
+    template:
+      accessModes: [ReadWriteOnce]
+      resources:
+        requests:
+          storage: 1Gi
+
+podSecurityContext:
+  fsGroup: 1000
+
+service:
+  type: LoadBalancer
+  ports:
+    ssh: 2222
+    http: 8888
+    mysql: 0
+    pgsql: 0
+
+# The OIDC client secret is part of this external Kubernetes Secret, never Git.
+volumes:
+  - name: aw0-config
+    secret:
+      secretName: warpgate-aw0-config
+
+volume_mounts:
+  - name: aw0-config
+    mountPath: /data/warpgate.yaml
+    subPath: warpgate.yaml
+    readOnly: true
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
