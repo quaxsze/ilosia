@@ -1,6 +1,6 @@
 image:
   repository: ghcr.io/quaxsze/ilosia
-  tag: "e8b5910380ce6b01c821a2e2c1a34808a30de053"
+  tag: "e766a3ca00d0609849974c731b8ec1996f2b36e3"
   pullPolicy: IfNotPresent
 
 authentication:
